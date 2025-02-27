@@ -58,9 +58,19 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
 
     console.log('Page loaded successfully in virtual DOM');
 
+    // Set up global window and document for axe-core
+    const window = dom.window;
+    global.window = window;
+    global.document = document;
+
     // Run axe
     return new Promise((resolve, reject) => {
-      axe.run(document, (err: Error | null, results: any) => {
+      axe.run(document, {
+        runOnly: {
+          type: 'tag',
+          values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
+        }
+      }, (err: Error | null, results: any) => {
         if (err) {
           console.error('Axe-core error:', err);
           reject(err);
@@ -78,6 +88,10 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
   } catch (error) {
     console.error('Scan error:', error);
     throw error;
+  } finally {
+    // Clean up global objects
+    delete (global as any).window;
+    delete (global as any).document;
   }
 }
 
