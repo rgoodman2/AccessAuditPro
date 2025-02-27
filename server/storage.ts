@@ -1,8 +1,11 @@
-import { User, InsertUser, Scan, InsertScan } from "@shared/schema";
+import { users, scans, type User, type InsertUser, type Scan, type InsertScan } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 import session from "express-session";
-import createMemoryStore from "memorystore";
+import connectPg from "connect-pg-simple";
+import { pool } from "./db";
 
-const MemoryStore = createMemoryStore(session);
+const PostgresSessionStore = connectPg(session);
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -14,66 +17,53 @@ export interface IStorage {
   sessionStore: session.Store;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private scans: Map<number, Scan>;
-  private currentUserId: number;
-  private currentScanId: number;
+export class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
 
   constructor() {
-    this.users = new Map();
-    this.scans = new Map();
-    this.currentUserId = 1;
-    this.currentScanId = 1;
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000,
+    this.sessionStore = new PostgresSessionStore({
+      pool,
+      createTableIfMissing: true,
     });
   }
 
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentUserId++;
-    const user = { ...insertUser, id };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 
   async createScan(userId: number, scan: InsertScan): Promise<Scan> {
-    const id = this.currentScanId++;
-    const newScan: Scan = {
-      id,
-      userId,
-      status: "pending",
-      createdAt: new Date(),
-      reportUrl: null,
-      ...scan,
-    };
-    this.scans.set(id, newScan);
+    const [newScan] = await db
+      .insert(scans)
+      .values({
+        ...scan,
+        userId,
+        status: "pending",
+      })
+      .returning();
     return newScan;
   }
 
   async getUserScans(userId: number): Promise<Scan[]> {
-    return Array.from(this.scans.values()).filter(
-      (scan) => scan.userId === userId,
-    );
+    return await db.select().from(scans).where(eq(scans.userId, userId));
   }
 
   async updateScanStatus(scanId: number, status: string, reportUrl?: string): Promise<void> {
-    const scan = this.scans.get(scanId);
-    if (scan) {
-      this.scans.set(scanId, { ...scan, status, reportUrl: reportUrl || scan.reportUrl });
-    }
+    await db
+      .update(scans)
+      .set({ status, reportUrl })
+      .where(eq(scans.id, scanId));
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
