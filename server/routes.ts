@@ -4,11 +4,15 @@ import { setupAuth } from "./auth";
 import { storage } from "./storage";
 import { insertScanSchema } from "@shared/schema";
 import { z } from "zod";
-import { createReport } from "pdfkit";
-import axe from "axe-core";
+import { scanWebsite, generateReport } from "./services/scanner";
+import path from "path";
+import express from "express";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
+
+  // Serve generated reports
+  app.use("/reports", express.static(path.join(process.cwd(), "reports")));
 
   app.post("/api/scans", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
@@ -17,17 +21,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const data = insertScanSchema.parse(req.body);
       const scan = await storage.createScan(req.user!.id, data);
 
-      // Process scan immediately instead of using setTimeout
       try {
-        // In a real implementation, we would:
-        // 1. Use a headless browser to load the page
-        // 2. Run axe-core scan
-        // 3. Generate PDF report
-        // 4. Store report URL
+        // Run the accessibility scan
+        const results = await scanWebsite(data.url);
 
-        // Simulate a quick scan for now
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        await storage.updateScanStatus(scan.id, "completed", "report.pdf");
+        // Generate the PDF report
+        const reportPath = await generateReport(data.url, results);
+        const reportUrl = `/reports/${path.basename(reportPath)}`;
+
+        // Update scan status with report URL
+        await storage.updateScanStatus(scan.id, "completed", reportUrl);
       } catch (error) {
         console.error("Scan failed:", error);
         await storage.updateScanStatus(scan.id, "failed");
