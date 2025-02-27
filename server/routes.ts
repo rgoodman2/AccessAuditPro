@@ -11,7 +11,8 @@ import express from "express";
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
 
-  // Serve generated reports
+  // Serve test pages and generated reports
+  app.use("/test-pages", express.static(path.join(process.cwd(), "server/test-pages")));
   app.use("/reports", express.static(path.join(process.cwd(), "reports")));
 
   app.post("/api/scans", async (req, res) => {
@@ -22,7 +23,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const scan = await storage.createScan(req.user!.id, data);
 
       try {
-        // Run the accessibility scan
+        // Run the accessibility scan on our test page
         const results = await scanWebsite(data.url);
 
         // Generate the PDF report

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Page for Accessibility Scanning</title>
+</head>
+<body>
+    <!-- Missing alt text - accessibility violation -->
+    <img src="https://picsum.photos/200" />
+
+    <!-- Missing button label - accessibility violation -->
+    <button></button>
+
+    <!-- Good heading structure - passes -->
+    <h1>Main Heading</h1>
+    <h2>Subheading</h2>
+
+    <!-- Good form labels - passes -->
+    <form>
+        <label for="name">Name:</label>
+        <input type="text" id="name" />
+    </form>
+
+    <!-- Low contrast text - needs review -->
+    <p style="color: #999999; background-color: #ffffff;">
+        This text might be hard to read due to low contrast.
+    </p>
+</body>
+</html>

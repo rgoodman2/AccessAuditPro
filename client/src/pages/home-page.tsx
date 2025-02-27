@@ -87,9 +87,9 @@ export default function HomePage() {
 
           <Alert className="mb-6">
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Supported Websites</AlertTitle>
+            <AlertTitle>Test Page Scanning</AlertTitle>
             <AlertDescription>
-              Currently, we can scan the following domains: example.com, mozilla.org, w3.org, wikipedia.org, nodejs.org
+              For demonstration purposes, all URLs will be scanned against our test page that contains known accessibility issues.
             </AlertDescription>
           </Alert>
 
