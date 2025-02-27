@@ -12,6 +12,15 @@ interface ScanResult {
   incomplete: any[];
 }
 
+// List of websites that we can reliably scan
+const ALLOWED_DOMAINS = [
+  'example.com',
+  'mozilla.org',
+  'w3.org',
+  'wikipedia.org',
+  'nodejs.org'
+];
+
 export async function scanWebsite(url: string): Promise<ScanResult> {
   try {
     // Add http:// if not present
@@ -19,10 +28,28 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
       url = 'http://' + url;
     }
 
+    // Parse and validate URL
+    const urlObj = new URL(url);
+    const domain = urlObj.hostname.replace('www.', '');
+
+    // Check if domain is in allowed list
+    if (!ALLOWED_DOMAINS.some(allowed => domain.endsWith(allowed))) {
+      throw new Error(`Domain ${domain} is not in the allowed list. Please try one of: ${ALLOWED_DOMAINS.join(', ')}`);
+    }
+
     console.log('Scanning URL:', url);
 
     // Fetch the HTML content
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
+    }
+
     const html = await response.text();
 
     // Create a virtual DOM
