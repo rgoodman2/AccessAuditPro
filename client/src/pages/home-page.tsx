@@ -8,7 +8,12 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
@@ -80,9 +85,17 @@ export default function HomePage() {
             Enter your website URL below to check for WCAG 2.1 compliance
           </p>
 
+          <Alert className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Supported Websites</AlertTitle>
+            <AlertDescription>
+              Currently, we can scan the following domains: example.com, mozilla.org, w3.org, wikipedia.org, nodejs.org
+            </AlertDescription>
+          </Alert>
+
           <form onSubmit={onSubmit} className="flex gap-4">
             <Input
-              placeholder="https://your-website.com"
+              placeholder="example.com"
               className="flex-1"
               {...form.register("url")}
             />
