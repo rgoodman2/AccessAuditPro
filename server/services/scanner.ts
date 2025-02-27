@@ -1,4 +1,5 @@
-import puppeteer from "puppeteer";
+import { JSDOM } from "jsdom";
+import fetch from "node-fetch";
 import axe from "axe-core";
 import PDFDocument from "pdfkit";
 import fs from "fs";
@@ -12,57 +13,44 @@ interface ScanResult {
 }
 
 export async function scanWebsite(url: string): Promise<ScanResult> {
-  const browser = await puppeteer.launch({
-    headless: 'new',
-    executablePath: '/nix/store/chromium-wrapper/bin/chromium',
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu'
-    ]
-  });
-
   try {
-    const page = await browser.newPage();
-    await page.setDefaultTimeout(30000); // 30 second timeout
-
     // Add http:// if not present
     if (!url.startsWith('http')) {
       url = 'http://' + url;
     }
 
     console.log('Scanning URL:', url);
-    await page.goto(url, { waitUntil: "networkidle0" });
-    console.log('Page loaded successfully');
 
-    // Inject axe-core as a string
-    const axeSource = require.resolve('axe-core/axe.min.js');
-    const axeScript = fs.readFileSync(axeSource, 'utf8');
-    await page.evaluate(axeScript);
-    console.log('Axe-core injected');
+    // Fetch the HTML content
+    const response = await fetch(url);
+    const html = await response.text();
 
-    const results = await page.evaluate(() => {
-      return new Promise((resolve, reject) => {
-        // @ts-ignore
-        window.axe.run(document, (err: Error, results: any) => {
-          if (err) reject(err);
-          resolve(results);
+    // Create a virtual DOM
+    const dom = new JSDOM(html);
+    const document = dom.window.document;
+
+    console.log('Page loaded successfully in virtual DOM');
+
+    // Run axe
+    return new Promise((resolve, reject) => {
+      axe.run(document, (err: Error | null, results: any) => {
+        if (err) {
+          console.error('Axe-core error:', err);
+          reject(err);
+          return;
+        }
+
+        console.log('Scan completed successfully');
+        resolve({
+          violations: results.violations || [],
+          passes: results.passes || [],
+          incomplete: results.incomplete || []
         });
       });
     });
-    console.log('Scan completed successfully');
-
-    return {
-      violations: results.violations || [],
-      passes: results.passes || [],
-      incomplete: results.incomplete || []
-    };
   } catch (error) {
     console.error('Scan error:', error);
     throw error;
-  } finally {
-    await browser.close();
   }
 }
 
@@ -112,7 +100,7 @@ export async function generateReport(url: string, results: ScanResult): Promise<
     doc.moveDown();
   });
 
-  // Add recommendations
+  // Add recommendations for incomplete tests
   if (results.incomplete.length > 0) {
     doc.addPage();
     doc.fontSize(18).text('Additional Recommendations', { underline: true });
