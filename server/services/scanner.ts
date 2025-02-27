@@ -1,7 +1,8 @@
 import puppeteer from "puppeteer";
 import axe from "axe-core";
 import PDFDocument from "pdfkit";
-import fs from "fs/promises";
+import fs from "fs";
+import { mkdir } from "fs/promises";
 import path from "path";
 
 interface ScanResult {
@@ -13,6 +14,7 @@ interface ScanResult {
 export async function scanWebsite(url: string): Promise<ScanResult> {
   const browser = await puppeteer.launch({
     headless: 'new',
+    executablePath: '/nix/store/chromium-wrapper/bin/chromium',
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -30,25 +32,35 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
       url = 'http://' + url;
     }
 
+    console.log('Scanning URL:', url);
     await page.goto(url, { waitUntil: "networkidle0" });
+    console.log('Page loaded successfully');
 
-    // Inject and run axe-core
-    await page.evaluate(axe.source);
+    // Inject axe-core as a string
+    const axeSource = require.resolve('axe-core/axe.min.js');
+    const axeScript = fs.readFileSync(axeSource, 'utf8');
+    await page.evaluate(axeScript);
+    console.log('Axe-core injected');
+
     const results = await page.evaluate(() => {
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         // @ts-ignore
-        axe.run((err: Error, results: any) => {
-          if (err) throw err;
+        window.axe.run(document, (err: Error, results: any) => {
+          if (err) reject(err);
           resolve(results);
         });
       });
     });
+    console.log('Scan completed successfully');
 
     return {
       violations: results.violations || [],
       passes: results.passes || [],
       incomplete: results.incomplete || []
     };
+  } catch (error) {
+    console.error('Scan error:', error);
+    throw error;
   } finally {
     await browser.close();
   }
@@ -60,7 +72,7 @@ export async function generateReport(url: string, results: ScanResult): Promise<
   const reportPath = path.join(reportsDir, `scan_${Date.now()}.pdf`);
 
   // Ensure reports directory exists
-  await fs.mkdir(reportsDir, { recursive: true });
+  await mkdir(reportsDir, { recursive: true });
 
   const writeStream = fs.createWriteStream(reportPath);
   doc.pipe(writeStream);
