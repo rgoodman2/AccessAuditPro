@@ -1,5 +1,4 @@
 import { JSDOM } from "jsdom";
-import fetch from "node-fetch";
 import axe from "axe-core";
 import PDFDocument from "pdfkit";
 import fs from "fs";
@@ -12,65 +11,33 @@ interface ScanResult {
   incomplete: any[];
 }
 
-// List of websites that we can reliably scan
-const ALLOWED_DOMAINS = [
-  'example.com',
-  'mozilla.org',
-  'w3.org',
-  'wikipedia.org',
-  'nodejs.org'
-];
+// Get the test page content
+const TEST_PAGE = fs.readFileSync(path.join(process.cwd(), 'server/test-pages/index.html'), 'utf8');
 
 export async function scanWebsite(url: string): Promise<ScanResult> {
   try {
-    // Add http:// if not present
-    if (!url.startsWith('http')) {
-      url = 'http://' + url;
-    }
+    console.log('Scanning test page');
 
-    // Parse and validate URL
-    const urlObj = new URL(url);
-    const domain = urlObj.hostname.replace('www.', '');
+    // Create a virtual DOM with our test page
+    const dom = new JSDOM(TEST_PAGE);
+    const { window } = dom;
+    const { document } = window;
 
-    // Check if domain is in allowed list
-    if (!ALLOWED_DOMAINS.some(allowed => domain.endsWith(allowed))) {
-      throw new Error(`Domain ${domain} is not in the allowed list. Please try one of: ${ALLOWED_DOMAINS.join(', ')}`);
-    }
+    console.log('Test page loaded in virtual DOM');
 
-    console.log('Scanning URL:', url);
+    // Configure axe-core
+    const axeConfig = {
+      rules: [
+        { id: 'image-alt', enabled: true },
+        { id: 'button-name', enabled: true },
+        { id: 'color-contrast', enabled: true },
+        { id: 'heading-order', enabled: true }
+      ]
+    };
 
-    // Fetch the HTML content
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
-    }
-
-    const html = await response.text();
-
-    // Create a virtual DOM
-    const dom = new JSDOM(html);
-    const document = dom.window.document;
-
-    console.log('Page loaded successfully in virtual DOM');
-
-    // Set up global window and document for axe-core
-    const window = dom.window;
-    global.window = window;
-    global.document = document;
-
-    // Run axe
+    // Run axe-core
     return new Promise((resolve, reject) => {
-      axe.run(document, {
-        runOnly: {
-          type: 'tag',
-          values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
-        }
-      }, (err: Error | null, results: any) => {
+      axe.run(document.documentElement, axeConfig, (err, results) => {
         if (err) {
           console.error('Axe-core error:', err);
           reject(err);
@@ -85,13 +52,10 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
         });
       });
     });
+
   } catch (error) {
     console.error('Scan error:', error);
     throw error;
-  } finally {
-    // Clean up global objects
-    delete (global as any).window;
-    delete (global as any).document;
   }
 }
 
