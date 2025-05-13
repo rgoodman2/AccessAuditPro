@@ -6,16 +6,64 @@ import { mkdir } from "fs/promises";
 import path from "path";
 import fetch from "node-fetch";
 import { setTimeout } from "timers/promises";
-import { createCanvas } from "canvas";
+import { createCanvas, Image, loadImage } from "canvas";
+import puppeteer from "puppeteer";
 
 interface ScanResult {
   violations: any[];
   passes: any[];
   incomplete: any[];
+  screenshot?: string; // Base64 encoded screenshot
 }
 
 // Get the test page content
 const TEST_PAGE = fs.readFileSync(path.join(process.cwd(), 'server/test-pages/index.html'), 'utf8');
+
+// Function to capture screenshot using Puppeteer
+async function captureScreenshot(url: string): Promise<string | null> {
+  let browser = null;
+  try {
+    console.log('Launching browser for screenshot...');
+    browser = await puppeteer.launch({ 
+      headless: "new",
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
+    
+    // Set a reasonable timeout
+    await page.setDefaultNavigationTimeout(30000);
+    
+    console.log(`Navigating to ${url} for screenshot...`);
+    await page.goto(url, { waitUntil: 'networkidle2' });
+    
+    // Wait a bit for any animations or lazy-loaded content
+    await page.waitForTimeout(2000);
+    
+    // Take the screenshot
+    console.log('Taking screenshot...');
+    const screenshot = await page.screenshot({ 
+      type: 'jpeg',
+      quality: 80,
+      fullPage: false
+    });
+    
+    // Convert to base64
+    const base64Screenshot = screenshot.toString('base64');
+    console.log('Screenshot captured successfully');
+    return base64Screenshot;
+    
+  } catch (error) {
+    console.error('Error capturing screenshot:', error);
+    return null;
+  } finally {
+    if (browser) {
+      await browser.close();
+      console.log('Browser closed');
+    }
+  }
+}
 
 export async function scanWebsite(url: string): Promise<ScanResult> {
   try {
@@ -25,6 +73,10 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
     }
 
     console.log('Scanning real website:', url);
+    
+    // Launch screenshot capture in parallel with the scan
+    // Using Promise.all might block if one fails, so we'll use separate promises
+    const screenshotPromise = captureScreenshot(url);
 
     // Fetch the website content
     let htmlContent;
@@ -90,7 +142,7 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
     };
 
     // Run axe-core
-    return new Promise((resolve, reject) => {
+    const scanResultPromise = new Promise<ScanResult>((resolve, reject) => {
       try {
         axe.run(document.documentElement, axeConfig, (err, results) => {
           if (err) {
@@ -115,6 +167,18 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
         reject(new Error('Failed to execute accessibility scan'));
       }
     });
+    
+    // Wait for both the scan and screenshot to complete
+    const [scanResult, screenshot] = await Promise.all([
+      scanResultPromise,
+      screenshotPromise
+    ]);
+    
+    // Combine the results
+    return {
+      ...scanResult,
+      screenshot: screenshot || undefined
+    };
 
   } catch (error) {
     console.error('Scan error:', error);
@@ -123,7 +187,18 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
 }
 
 export async function generateReport(url: string, results: ScanResult): Promise<string> {
-  const doc = new PDFDocument();
+  // Create document with slightly larger pages for better readability
+  const doc = new PDFDocument({
+    size: 'letter',
+    margin: 50,
+    info: {
+      Title: `Accessibility Report for ${url}`,
+      Author: 'AccessScan',
+      Subject: 'Web Accessibility Audit',
+      Keywords: 'accessibility, WCAG, audit, web'
+    }
+  });
+  
   const reportsDir = path.join(process.cwd(), "reports");
   const reportPath = path.join(reportsDir, `scan_${Date.now()}.pdf`);
 
@@ -133,54 +208,274 @@ export async function generateReport(url: string, results: ScanResult): Promise<
   const writeStream = fs.createWriteStream(reportPath);
   doc.pipe(writeStream);
 
-  // Add report header
-  doc.fontSize(24).text('Web Accessibility Scan Report', { align: 'center' });
-  doc.moveDown();
-  doc.fontSize(14).text(`URL: ${url}`);
-  doc.moveDown();
-  doc.text(`Scan Date: ${new Date().toLocaleString()}`);
-  doc.moveDown().moveDown();
+  // Helper functions for consistent styling
+  const addHeading = (text, options = {}) => {
+    doc.fontSize(24)
+       .fillColor('#1E40AF') // Blue heading color
+       .text(text, { underline: false, ...options });
+    doc.moveDown();
+  };
+  
+  const addSubheading = (text, options = {}) => {
+    doc.fontSize(18)
+       .fillColor('#1F2937') // Dark gray text
+       .text(text, { ...options });
+    doc.moveDown();
+  };
+  
+  const addParagraph = (text, options = {}) => {
+    doc.fontSize(12)
+       .fillColor('#374151') // Gray text
+       .text(text, { ...options });
+    doc.moveDown(0.5);
+  };
 
-  // Add violations section
-  doc.fontSize(18).text('Accessibility Issues', { underline: true });
+  // Cover page with branding elements
+  try {
+    // This is a placeholder for a company logo
+    // In a real implementation, this would be configurable
+    doc.fontSize(32)
+       .fillColor('#2563EB')
+       .text('AccessScan', { align: 'center' });
+       
+    doc.fontSize(16)
+       .fillColor('#6B7280')
+       .text('Web Accessibility Audit Report', { align: 'center' });
+       
+    doc.moveDown(2);
+    
+    // URL and date information
+    doc.fontSize(14)
+       .fillColor('#000000')
+       .text(`Website: ${url}`, { align: 'center' });
+    
+    doc.fontSize(12)
+       .fillColor('#6B7280')
+       .text(`Scan Date: ${new Date().toLocaleString()}`, { align: 'center' });
+    
+    doc.moveDown(4);
+    
+    // Add WCAG compliance explanation
+    doc.fontSize(12)
+       .fillColor('#4B5563')
+       .text('This report evaluates website compliance with Web Content Accessibility Guidelines (WCAG) 2.1. The assessment includes automated tests that identify potential barriers for users with disabilities.', {
+         align: 'center',
+         width: 400
+       });
+    
+    // Add page numbers to all pages except the cover
+    doc.on('pageAdded', () => {
+      const totalPages = doc.bufferedPageRange().count;
+      doc.switchToPage(totalPages - 1);
+      doc.fontSize(10)
+         .fillColor('#6B7280')
+         .text(`Page ${totalPages}`, { align: 'right' });
+    });
+    
+  } catch (error) {
+    console.error('Error creating cover page:', error);
+  }
+  
+  // Executive Summary page
+  doc.addPage();
+  addHeading('Executive Summary', { align: 'left' });
+  
+  // Calculate compliance metrics
+  const totalIssues = results.violations.length;
+  const criticalIssues = results.violations.filter(v => v.impact === 'critical' || v.impact === 'serious').length;
+  const moderateIssues = results.violations.filter(v => v.impact === 'moderate').length;
+  const minorIssues = results.violations.filter(v => v.impact === 'minor').length;
+  
+  // Display metrics
+  addParagraph(`Total accessibility issues detected: ${totalIssues}`);
+  addParagraph(`Critical issues: ${criticalIssues}`);
+  addParagraph(`Moderate issues: ${moderateIssues}`);
+  addParagraph(`Minor issues: ${minorIssues}`);
+  
+  // Add risk level assessment
+  let complianceLevel = 'High';
+  let complianceColor = '#10B981'; // Green
+  
+  if (criticalIssues > 0 || totalIssues > 10) {
+    complianceLevel = 'Low';
+    complianceColor = '#EF4444'; // Red
+  } else if (moderateIssues > 5 || totalIssues > 5) {
+    complianceLevel = 'Medium';
+    complianceColor = '#F59E0B'; // Amber
+  }
+  
   doc.moveDown();
+  doc.fontSize(14)
+     .fillColor(complianceColor)
+     .text(`Compliance Risk Level: ${complianceLevel}`, { align: 'left' });
+  
+  doc.moveDown();
+  addParagraph('This report contains actionable recommendations to improve the accessibility of your website and ensure compliance with WCAG 2.1 standards.');
 
+  // Detailed Issues Page
+  doc.addPage();
+  addHeading('Accessibility Issues', { align: 'left' });
+  
   if (results.violations.length === 0) {
-    doc.fontSize(12).text('No accessibility issues were found.');
+    addParagraph('No accessibility issues were found. Congratulations!');
   } else {
-    results.violations.forEach((violation, index) => {
-      doc.fontSize(14).text(`${index + 1}. ${violation.help}`);
-      doc.fontSize(12).text(`Impact: ${violation.impact}`);
-      doc.fontSize(12).text(`WCAG Criteria: ${violation.tags.join(', ')}`);
-      doc.fontSize(12).text('How to fix:');
-      doc.fontSize(10).text(violation.description);
+    // Group violations by impact for better organization
+    const impactOrder = ['critical', 'serious', 'moderate', 'minor'];
+    const groupedViolations = {};
+    
+    impactOrder.forEach(impact => {
+      const violationsWithImpact = results.violations.filter(v => v.impact === impact);
+      if (violationsWithImpact.length > 0) {
+        groupedViolations[impact] = violationsWithImpact;
+      }
+    });
+    
+    // Display grouped violations
+    Object.entries(groupedViolations).forEach(([impact, violations]) => {
+      doc.moveDown();
+      doc.fontSize(16)
+         .fillColor(impact === 'critical' || impact === 'serious' ? '#DC2626' : impact === 'moderate' ? '#F59E0B' : '#6B7280')
+         .text(`${impact.charAt(0).toUpperCase() + impact.slice(1)} Impact Issues`, { underline: true });
+      doc.moveDown();
+      
+      violations.forEach((violation, index) => {
+        // Issue title and metadata
+        doc.fontSize(14)
+           .fillColor('#000000')
+           .text(`${index + 1}. ${violation.help}`);
+        
+        // WCAG reference
+        const wcagCriteria = violation.tags
+          .filter(tag => tag.startsWith('wcag'))
+          .map(tag => tag.toUpperCase())
+          .join(', ');
+        
+        doc.fontSize(12)
+           .fillColor('#4B5563')
+           .text(`WCAG Criteria: ${wcagCriteria || 'Not specified'}`);
+        
+        // Problem description
+        doc.moveDown(0.5);
+        doc.fontSize(12)
+           .fillColor('#000000')
+           .text('Problem:');
+        
+        doc.fontSize(12)
+           .fillColor('#4B5563')
+           .text(violation.description, { indent: 20 });
+        
+        // Solution section with actionable advice
+        doc.moveDown(0.5);
+        doc.fontSize(12)
+           .fillColor('#000000')
+           .text('How to fix:');
+        
+        doc.fontSize(12)
+           .fillColor('#4B5563')
+           .text(violation.helpUrl, { indent: 20, link: violation.helpUrl });
+        
+        // If nodes are available, show a specific example
+        if (violation.nodes && violation.nodes.length > 0) {
+          const node = violation.nodes[0];
+          if (node.html) {
+            doc.moveDown(0.5);
+            doc.fontSize(12)
+               .fillColor('#000000')
+               .text('Example HTML:');
+            
+            doc.fontSize(10)
+               .fillColor('#6B7280')
+               .text(node.html.substring(0, 150) + (node.html.length > 150 ? '...' : ''), 
+                 { indent: 20 });
+          }
+        }
+        
+        doc.moveDown(1);
+      });
+    });
+  }
+
+  // Passing Tests Section
+  if (results.passes.length > 0) {
+    doc.addPage();
+    addHeading('Passing Accessibility Tests', { align: 'left' });
+    addParagraph(`Your website successfully passed ${results.passes.length} accessibility tests, including:`);
+    doc.moveDown();
+    
+    // Group passes by category
+    const categories = {};
+    results.passes.forEach(pass => {
+      const category = pass.tags.find(tag => tag.startsWith('cat.')) || 'other';
+      if (!categories[category]) {
+        categories[category] = [];
+      }
+      categories[category].push(pass);
+    });
+    
+    // Display grouped passes
+    Object.entries(categories).forEach(([category, passes]) => {
+      const categoryName = category.replace('cat.', '').replace(/\b\w/g, c => c.toUpperCase());
+      doc.fontSize(14)
+         .fillColor('#10B981') // Green for passing tests
+         .text(`${categoryName}`);
+      
+      doc.moveDown(0.5);
+      passes.forEach(pass => {
+        doc.fontSize(12)
+           .fillColor('#374151')
+           .text(`✓ ${pass.help}`, { indent: 10 });
+      });
       doc.moveDown();
     });
   }
 
-  // Add passing tests section
-  doc.addPage();
-  doc.fontSize(18).text('Passing Accessibility Tests', { underline: true });
-  doc.moveDown();
-
-  results.passes.forEach((pass, index) => {
-    doc.fontSize(12).text(`${index + 1}. ${pass.help}`);
-    doc.moveDown();
-  });
-
-  // Add recommendations for incomplete tests
+  // Recommendations section
   if (results.incomplete.length > 0) {
     doc.addPage();
-    doc.fontSize(18).text('Additional Recommendations', { underline: true });
+    addHeading('Additional Recommendations', { align: 'left' });
+    addParagraph('These items require manual verification to ensure full accessibility compliance:');
     doc.moveDown();
-
+    
     results.incomplete.forEach((item, index) => {
-      doc.fontSize(12).text(`${index + 1}. ${item.help}`);
-      doc.fontSize(10).text(item.description);
+      doc.fontSize(14)
+         .fillColor('#6B7280')
+         .text(`${index + 1}. ${item.help}`);
+      
+      doc.fontSize(12)
+         .fillColor('#4B5563')
+         .text(item.description, { indent: 10 });
+      
       doc.moveDown();
     });
   }
 
+  // Contact information (placeholder)
+  doc.addPage();
+  addHeading('Next Steps', { align: 'center' });
+  doc.moveDown(2);
+  
+  addParagraph('To improve your website\'s accessibility:');
+  addParagraph('1. Address the critical issues identified in this report first', { indent: 20 });
+  addParagraph('2. Implement the recommended fixes for each issue', { indent: 20 });
+  addParagraph('3. Conduct regular accessibility audits', { indent: 20 });
+  addParagraph('4. Test with real users with disabilities', { indent: 20 });
+  
+  doc.moveDown(2);
+  
+  // Contact info (customizable placeholder)
+  doc.fontSize(14)
+     .fillColor('#2563EB')
+     .text('AccessScan Support', { align: 'center' });
+  
+  doc.fontSize(12)
+     .fillColor('#6B7280')
+     .text('contact@accessscan.example.com', { align: 'center' });
+  
+  doc.moveDown();
+  doc.fontSize(12)
+     .fillColor('#6B7280')
+     .text('For questions or assistance with implementing these recommendations', { align: 'center' });
+  
   doc.end();
 
   await new Promise((resolve) => writeStream.on('finish', resolve));
