@@ -65,6 +65,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const scans = await storage.getUserScans(req.user!.id);
     res.json(scans);
   });
+  
+  // Report settings routes
+  app.get("/api/report-settings", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const settings = await storage.getReportSettings(req.user!.id);
+      res.json(settings || {});
+    } catch (error) {
+      console.error("Error fetching report settings:", error);
+      res.status(500).json({ error: "Failed to fetch report settings" });
+    }
+  });
+  
+  app.post("/api/report-settings", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const data = reportSettingsSchema.parse(req.body);
+      const settings = await storage.saveReportSettings(req.user!.id, data);
+      res.json(settings);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json(error.errors);
+      } else {
+        console.error("Error saving report settings:", error);
+        res.status(500).json({ error: "Failed to save report settings" });
+      }
+    }
+  });
 
   const httpServer = createServer(app);
   return httpServer;

@@ -1,4 +1,4 @@
-import { users, scans, type User, type InsertUser, type Scan, type InsertScan } from "@shared/schema";
+import { users, scans, reportSettings, type User, type InsertUser, type Scan, type InsertScan, type ReportSettings, type InsertReportSettings } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import session from "express-session";
@@ -14,6 +14,8 @@ export interface IStorage {
   createScan(userId: number, scan: InsertScan): Promise<Scan>;
   getUserScans(userId: number): Promise<Scan[]>;
   updateScanStatus(scanId: number, status: string, reportUrl?: string): Promise<void>;
+  getReportSettings(userId: number): Promise<ReportSettings | undefined>;
+  saveReportSettings(userId: number, settings: InsertReportSettings): Promise<ReportSettings>;
   sessionStore: session.Store;
 }
 
@@ -79,6 +81,45 @@ export class DatabaseStorage implements IStorage {
       .update(scans)
       .set({ status, reportUrl })
       .where(eq(scans.id, scanId));
+  }
+  
+  async getReportSettings(userId: number): Promise<ReportSettings | undefined> {
+    const [settings] = await db
+      .select()
+      .from(reportSettings)
+      .where(eq(reportSettings.userId, userId));
+    
+    return settings;
+  }
+  
+  async saveReportSettings(userId: number, settings: InsertReportSettings): Promise<ReportSettings> {
+    // Check if settings already exist for this user
+    const existingSettings = await this.getReportSettings(userId);
+    
+    if (existingSettings) {
+      // Update existing settings
+      const [updated] = await db
+        .update(reportSettings)
+        .set({
+          ...settings,
+          updatedAt: new Date()
+        })
+        .where(eq(reportSettings.userId, userId))
+        .returning();
+      
+      return updated;
+    } else {
+      // Create new settings
+      const [newSettings] = await db
+        .insert(reportSettings)
+        .values({
+          ...settings,
+          userId
+        })
+        .returning();
+      
+      return newSettings;
+    }
   }
 }
 
