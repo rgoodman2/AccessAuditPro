@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
-import { insertScanSchema } from "@shared/schema";
+import { insertScanSchema, reportSettingsSchema } from "@shared/schema";
 import { z } from "zod";
 import { scanWebsite, generateReport } from "./services/scanner";
 import path from "path";

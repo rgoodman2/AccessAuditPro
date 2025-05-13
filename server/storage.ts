@@ -43,19 +43,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createScan(userId: number, scan: InsertScan): Promise<Scan> {
+    // Explicitly define what columns to insert to avoid schema mismatch
     const [newScan] = await db
       .insert(scans)
       .values({
-        ...scan,
+        url: scan.url,
         userId,
         status: "pending",
       })
-      .returning();
+      .returning({
+        id: scans.id,
+        userId: scans.userId,
+        url: scans.url,
+        status: scans.status,
+        reportUrl: scans.reportUrl,
+        createdAt: scans.createdAt
+      });
     return newScan;
   }
 
   async getUserScans(userId: number): Promise<Scan[]> {
-    return await db.select().from(scans).where(eq(scans.userId, userId));
+    // Temporarily handle the missing screenshot column by selecting explicit columns
+    return await db.select({
+      id: scans.id,
+      userId: scans.userId,
+      url: scans.url,
+      status: scans.status,
+      reportUrl: scans.reportUrl,
+      createdAt: scans.createdAt
+    }).from(scans).where(eq(scans.userId, userId));
   }
 
   async updateScanStatus(scanId: number, status: string, reportUrl?: string): Promise<void> {

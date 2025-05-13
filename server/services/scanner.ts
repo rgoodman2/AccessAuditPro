@@ -24,43 +24,66 @@ async function captureScreenshot(url: string): Promise<string | null> {
   let browser = null;
   try {
     console.log('Launching browser for screenshot...');
-    browser = await puppeteer.launch({ 
-      headless: "new",
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    
+    // Check if we're in a production environment where we can launch a browser
+    // In some environments, this might fail due to restrictions
+    try {
+      browser = await puppeteer.launch({ 
+        headless: true,
+        args: [
+          '--no-sandbox', 
+          '--disable-setuid-sandbox',
+          '--disable-gpu',
+          '--disable-dev-shm-usage'
+        ]
+      });
+    } catch (launchError) {
+      console.error('Failed to launch browser for screenshot:', launchError);
+      return null;
+    }
     
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
     
     // Set a reasonable timeout
-    await page.setDefaultNavigationTimeout(30000);
+    page.setDefaultNavigationTimeout(30000);
     
     console.log(`Navigating to ${url} for screenshot...`);
-    await page.goto(url, { waitUntil: 'networkidle2' });
     
-    // Wait a bit for any animations or lazy-loaded content
-    await page.waitForTimeout(2000);
-    
-    // Take the screenshot
-    console.log('Taking screenshot...');
-    const screenshot = await page.screenshot({ 
-      type: 'jpeg',
-      quality: 80,
-      fullPage: false
-    });
-    
-    // Convert to base64
-    const base64Screenshot = screenshot.toString('base64');
-    console.log('Screenshot captured successfully');
-    return base64Screenshot;
+    try {
+      await page.goto(url, { waitUntil: 'networkidle2' });
+      
+      // Use a timeout promise instead of waitForTimeout
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Take the screenshot
+      console.log('Taking screenshot...');
+      const screenshot = await page.screenshot({ 
+        type: 'jpeg',
+        quality: 80,
+        fullPage: false
+      });
+      
+      // Convert to base64
+      const base64Screenshot = Buffer.from(screenshot).toString('base64');
+      console.log('Screenshot captured successfully');
+      return base64Screenshot;
+    } catch (navigationError) {
+      console.error('Navigation error during screenshot:', navigationError);
+      return null;
+    }
     
   } catch (error) {
     console.error('Error capturing screenshot:', error);
     return null;
   } finally {
     if (browser) {
-      await browser.close();
-      console.log('Browser closed');
+      try {
+        await browser.close();
+        console.log('Browser closed');
+      } catch (closeError) {
+        console.error('Error closing browser:', closeError);
+      }
     }
   }
 }
@@ -253,7 +276,33 @@ export async function generateReport(url: string, results: ScanResult): Promise<
        .fillColor('#6B7280')
        .text(`Scan Date: ${new Date().toLocaleString()}`, { align: 'center' });
     
-    doc.moveDown(4);
+    // Add website screenshot if available
+    if (results.screenshot) {
+      try {
+        doc.moveDown(1);
+        
+        // Center the screenshot with some margin
+        const pageWidth = doc.page.width - 100; // 50px margin on each side
+        const height = 300; // Fixed height for consistency
+        
+        doc.image(`data:image/jpeg;base64,${results.screenshot}`, {
+          fit: [pageWidth, height],
+          align: 'center',
+          valign: 'center'
+        });
+        
+        // Add caption
+        doc.moveDown(0.5);
+        doc.fontSize(10)
+           .fillColor('#6B7280')
+           .text('Website Screenshot', { align: 'center' });
+           
+      } catch (screenshotError) {
+        console.error('Error adding screenshot to PDF:', screenshotError);
+      }
+    }
+    
+    doc.moveDown(2);
     
     // Add WCAG compliance explanation
     doc.fontSize(12)
