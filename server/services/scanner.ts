@@ -27,12 +27,11 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
 
     // Configure axe-core
     const axeConfig = {
-      rules: [
-        { id: 'image-alt', enabled: true },
-        { id: 'button-name', enabled: true },
-        { id: 'color-contrast', enabled: true },
-        { id: 'heading-order', enabled: true }
-      ]
+      // Use proper rule configuration instead of [0]
+      runOnly: {
+        type: 'tag',
+        values: ['wcag2a', 'wcag2aa', 'best-practice']
+      }
     };
 
     // Run axe-core
