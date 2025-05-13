@@ -56,7 +56,16 @@ export const reportSettingsSchema = createInsertSchema(reportSettings)
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
-export type Scan = typeof scans.$inferSelect;
+// Define custom Scan type to handle schema changes
+export interface Scan {
+  id: number;
+  userId: number;
+  url: string;
+  status: string;
+  reportUrl: string | null;
+  createdAt: Date;
+  screenshot?: string | null;
+}
 export type InsertScan = z.infer<typeof insertScanSchema>;
 export type ReportSettings = typeof reportSettings.$inferSelect;
 export type InsertReportSettings = z.infer<typeof reportSettingsSchema>;
