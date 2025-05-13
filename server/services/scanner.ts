@@ -16,18 +16,28 @@ const TEST_PAGE = fs.readFileSync(path.join(process.cwd(), 'server/test-pages/in
 
 export async function scanWebsite(url: string): Promise<ScanResult> {
   try {
-    console.log('Scanning test page');
+    console.log('Scanning test page for URL:', url);
 
     // Create a virtual DOM with our test page
-    const dom = new JSDOM(TEST_PAGE);
+    let dom;
+    try {
+      dom = new JSDOM(TEST_PAGE, {
+        url: "https://localhost/test-page", // Provide a base URL to help with relative paths
+        runScripts: "outside-only", // Don't run scripts for safety
+        resources: "usable" // Allow loading resources
+      });
+    } catch (error) {
+      console.error('Error creating JSDOM:', error);
+      throw new Error('Failed to create virtual DOM for scanning');
+    }
+
     const { window } = dom;
     const { document } = window;
 
-    console.log('Test page loaded in virtual DOM');
+    console.log('Test page loaded in virtual DOM successfully');
 
     // Configure axe-core
     const axeConfig = {
-      // Use proper rule configuration instead of [0]
       runOnly: {
         type: 'tag',
         values: ['wcag2a', 'wcag2aa', 'best-practice']
@@ -36,25 +46,34 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
 
     // Run axe-core
     return new Promise((resolve, reject) => {
-      axe.run(document.documentElement, axeConfig, (err, results) => {
-        if (err) {
-          console.error('Axe-core error:', err);
-          reject(err);
-          return;
-        }
+      try {
+        axe.run(document.documentElement, axeConfig, (err, results) => {
+          if (err) {
+            console.error('Axe-core error:', err);
+            reject(new Error('Failed to run accessibility scan: ' + err.message));
+            return;
+          }
 
-        console.log('Scan completed successfully');
-        resolve({
-          violations: results.violations || [],
-          passes: results.passes || [],
-          incomplete: results.incomplete || []
+          console.log('Scan completed successfully with', 
+            results.violations.length, 'violations,',
+            results.passes.length, 'passes, and',
+            results.incomplete.length, 'incomplete tests');
+            
+          resolve({
+            violations: results.violations || [],
+            passes: results.passes || [],
+            incomplete: results.incomplete || []
+          });
         });
-      });
+      } catch (error) {
+        console.error('Axe-core exception:', error);
+        reject(new Error('Failed to execute accessibility scan'));
+      }
     });
 
   } catch (error) {
     console.error('Scan error:', error);
-    throw error;
+    throw new Error('Accessibility scan failed: ' + (error instanceof Error ? error.message : String(error)));
   }
 }
 
