@@ -4,6 +4,9 @@ import PDFDocument from "pdfkit";
 import fs from "fs";
 import { mkdir } from "fs/promises";
 import path from "path";
+import fetch from "node-fetch";
+import { setTimeout } from "timers/promises";
+import { createCanvas } from "canvas";
 
 interface ScanResult {
   violations: any[];
@@ -16,25 +19,66 @@ const TEST_PAGE = fs.readFileSync(path.join(process.cwd(), 'server/test-pages/in
 
 export async function scanWebsite(url: string): Promise<ScanResult> {
   try {
-    console.log('Scanning test page for URL:', url);
+    // Ensure URL has a protocol
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
 
-    // Create a virtual DOM with our test page
+    console.log('Scanning real website:', url);
+
+    // Fetch the website content
+    let htmlContent;
+    try {
+      // Create an AbortController to handle timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(15000).then(() => {
+        controller.abort();
+      });
+
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'AccessScan/1.0 Web Accessibility Checker',
+          'Accept': 'text/html'
+        },
+        signal: controller.signal
+      });
+      
+      // Clear the timeout to prevent memory leaks
+      clearTimeout(timeoutId as any);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch website: ${response.status} ${response.statusText}`);
+      }
+      
+      htmlContent = await response.text();
+      console.log(`Successfully fetched ${url}, content length: ${htmlContent.length} bytes`);
+    } catch (error) {
+      console.error('Error fetching website:', error);
+      const errorMessage = error instanceof Error 
+        ? (error.name === 'AbortError' ? 'Request timed out' : error.message) 
+        : String(error);
+      throw new Error(`Failed to fetch website: ${errorMessage}`);
+    }
+
+    // Create a virtual DOM with the fetched content
     let dom;
     try {
-      dom = new JSDOM(TEST_PAGE, {
-        url: "https://localhost/test-page", // Provide a base URL to help with relative paths
+      dom = new JSDOM(htmlContent, {
+        url: url, // Use the actual URL for relative paths
         runScripts: "outside-only", // Don't run scripts for safety
-        resources: "usable" // Allow loading resources
+        resources: "usable", // Allow loading resources
+        pretendToBeVisual: true // This helps with some visual-specific tests
       });
     } catch (error) {
       console.error('Error creating JSDOM:', error);
-      throw new Error('Failed to create virtual DOM for scanning');
+      throw new Error('Failed to parse website HTML: ' + 
+        (error instanceof Error ? error.message : String(error)));
     }
 
     const { window } = dom;
     const { document } = window;
 
-    console.log('Test page loaded in virtual DOM successfully');
+    console.log('Website loaded in virtual DOM successfully');
 
     // Configure axe-core with correct type
     // @ts-ignore - Ignoring typing issue with axe configuration
