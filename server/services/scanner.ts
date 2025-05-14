@@ -5,7 +5,7 @@ import fs from "fs";
 import { mkdir } from "fs/promises";
 import path from "path";
 import fetch from "node-fetch";
-import { setTimeout } from "timers/promises";
+// Using Node's built-in setTimeout
 import { createCanvas, Image, loadImage } from "canvas";
 import puppeteer from "puppeteer";
 
@@ -65,9 +65,9 @@ async function captureScreenshot(url: string): Promise<string | null> {
       
       // Wait a moment for any final rendering
       await new Promise(resolve => {
-        setTimeout(() => {
-          resolve(undefined);
-        }, 2000);
+        const id = setTimeout(resolve, 2000);
+        // For TypeScript compatibility
+        return () => clearTimeout(id);
       });
       
       // Take the screenshot

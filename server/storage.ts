@@ -64,12 +64,8 @@ export class DatabaseStorage implements IStorage {
           createdAt: scans.createdAt
         });
         
-      // Add the screenshot property to match our interface
-      // This is a workaround for database schema differences
-      return {
-        ...newScan,
-        screenshot: null
-      };
+      // Return the scan without screenshot property
+      return newScan;
     } catch (error) {
       console.error('Error creating scan:', error);
       throw error;
@@ -88,11 +84,8 @@ export class DatabaseStorage implements IStorage {
         createdAt: scans.createdAt
       }).from(scans).where(eq(scans.userId, userId));
       
-      // Add screenshot property to match our interface
-      return results.map(scan => ({
-        ...scan,
-        screenshot: null
-      }));
+      // Return the results without screenshot property
+      return results;
     } catch (error) {
       console.error('Error fetching scans:', error);
       throw error;
