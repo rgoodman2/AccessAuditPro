@@ -28,17 +28,27 @@ async function captureScreenshot(url: string): Promise<string | null> {
     // Check if we're in a production environment where we can launch a browser
     // In some environments, this might fail due to restrictions
     try {
+      // Try to detect if we're in a Replit environment with limitations
+      const isReplitDev = process.env.REPL_ID && !process.env.REPL_SLUG;
+      
+      if (isReplitDev) {
+        console.log('Detected Replit development environment - skipping screenshot for compatibility');
+        return null;
+      }
+      
       browser = await puppeteer.launch({ 
         headless: true,
         args: [
           '--no-sandbox', 
           '--disable-setuid-sandbox',
           '--disable-gpu',
-          '--disable-dev-shm-usage'
+          '--disable-dev-shm-usage',
+          '--single-process'
         ]
       });
     } catch (launchError) {
       console.error('Failed to launch browser for screenshot:', launchError);
+      // Continue with the scan, just without screenshots
       return null;
     }
     
@@ -51,9 +61,9 @@ async function captureScreenshot(url: string): Promise<string | null> {
     console.log(`Navigating to ${url} for screenshot...`);
     
     try {
-      await page.goto(url, { waitUntil: 'networkidle2' });
+      await page.goto(url, { waitUntil: 'networkidle0', timeout: 20000 });
       
-      // Use a timeout promise instead of waitForTimeout
+      // Wait a moment for any final rendering
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Take the screenshot
@@ -75,6 +85,7 @@ async function captureScreenshot(url: string): Promise<string | null> {
     
   } catch (error) {
     console.error('Error capturing screenshot:', error);
+    // Don't fail the entire scan if screenshot fails
     return null;
   } finally {
     if (browser) {
@@ -192,10 +203,29 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
     });
     
     // Wait for both the scan and screenshot to complete
-    const [scanResult, screenshot] = await Promise.all([
+    // Use allSettled to prevent one promise from causing the entire operation to fail
+    const results = await Promise.allSettled([
       scanResultPromise,
       screenshotPromise
     ]);
+    
+    // Extract results, handling potential rejections
+    let scanResult: ScanResult | null = null;
+    let screenshot: string | null = null;
+    
+    if (results[0].status === 'fulfilled') {
+      scanResult = results[0].value;
+    } else {
+      console.error('Scan failed:', results[0].reason);
+      throw new Error('Accessibility scan failed: ' + (results[0].reason instanceof Error ? results[0].reason.message : String(results[0].reason)));
+    }
+    
+    if (results[1].status === 'fulfilled') {
+      screenshot = results[1].value;
+    } else {
+      console.warn('Screenshot capture failed but continuing with scan:', results[1].reason);
+      // Continue without screenshot
+    }
     
     // Combine the results
     return {
