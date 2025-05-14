@@ -31,19 +31,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`Starting accessibility scan for URL: ${data.url}`);
           
           // Run the accessibility scan on our test page
-          const results = await scanWebsite(data.url);
-          console.log("Scan completed, generating report...");
+          let results;
+          try {
+            results = await scanWebsite(data.url);
+            console.log("Scan completed, generating report...");
+          } catch (scanError) {
+            console.error("Error during website scanning:", scanError);
+            await storage.updateScanStatus(scan.id, "failed");
+            return; // Exit early
+          }
 
           // Generate the PDF report
-          const reportPath = await generateReport(data.url, results);
-          const reportUrl = `/reports/${path.basename(reportPath)}`;
-          console.log(`Report generated at: ${reportPath}`);
-
-          // Update scan status with report URL
-          await storage.updateScanStatus(scan.id, "completed", reportUrl);
-          console.log(`Scan ID ${scan.id} marked as completed`);
+          let reportPath;
+          try {
+            reportPath = await generateReport(data.url, results);
+            const reportUrl = `/reports/${path.basename(reportPath)}`;
+            console.log(`Report generated at: ${reportPath}`);
+            
+            // Update scan status with report URL
+            await storage.updateScanStatus(scan.id, "completed", reportUrl);
+            console.log(`Scan ID ${scan.id} marked as completed`);
+          } catch (reportError) {
+            console.error("Error generating report:", reportError);
+            await storage.updateScanStatus(scan.id, "failed");
+          }
         } catch (error) {
-          console.error("Scan processing failed:", error);
+          console.error("Unhandled scan processing error:", error);
           await storage.updateScanStatus(scan.id, "failed");
         }
       })().catch(err => {

@@ -337,6 +337,12 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
 }
 
 export async function generateReport(url: string, results: ScanResult): Promise<string> {
+  // Ensure we have valid results
+  if (!results || !results.violations || !results.passes) {
+    console.log("Creating basic report due to missing scan results data");
+    return generateBasicReport(url);
+  }
+
   // Create document with slightly larger pages for better readability
   const doc = new PDFDocument({
     size: 'letter',
@@ -412,11 +418,26 @@ export async function generateReport(url: string, results: ScanResult): Promise<
         const pageWidth = doc.page.width - 100; // 50px margin on each side
         const height = 300; // Fixed height for consistency
         
-        doc.image(`data:image/jpeg;base64,${results.screenshot}`, {
-          fit: [pageWidth, height],
-          align: 'center',
-          valign: 'center'
-        });
+        // We'll skip the screenshot if it causes errors
+        if (results.screenshot && results.screenshot.startsWith('data:image/')) {
+          // The screenshot is already a data URL
+          doc.image(results.screenshot, {
+            fit: [pageWidth, height],
+            align: 'center',
+            valign: 'center'
+          });
+        } else if (results.screenshot) {
+          // Just raw base64 data
+          try {
+            doc.image(`data:image/png;base64,${results.screenshot}`, {
+              fit: [pageWidth, height],
+              align: 'center',
+              valign: 'center'
+            });
+          } catch (err) {
+            console.log('Could not parse screenshot as PNG, skipping');
+          }
+        }
         
         // Add caption
         doc.moveDown(0.5);
@@ -462,7 +483,7 @@ export async function generateReport(url: string, results: ScanResult): Promise<
   }
   
   // Enable page numbering now that we're past the cover page
-  pageNumbers = true;
+  let pageNumbers = true;
   
   // Executive Summary page
   doc.addPage();
