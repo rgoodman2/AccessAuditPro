@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accessible Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        header {
+            background-color: #f4f4f4;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .high-contrast {
+            color: #000000;
+            background-color: #ffffff;
+        }
+        .normal-text {
+            font-size: 16px;
+        }
+        .skip-link {
+            position: absolute;
+            left: -10000px;
+            top: auto;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+        }
+        .skip-link:focus {
+            position: static;
+            width: auto;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+    <!-- Accessible skip link -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    
+    <div class="container">
+        <header>
+            <h1>Accessible Test Page</h1>
+            <p>This page follows accessibility best practices.</p>
+        </header>
+        
+        <main id="main-content">
+            <section>
+                <h2>Proper Alternative Text</h2>
+                <img src="https://via.placeholder.com/300x150" width="300" height="150" alt="A 300x150 placeholder image">
+                
+                <h2>High Contrast Text</h2>
+                <p class="high-contrast">This text has high contrast for easy readability.</p>
+                
+                <h2>Appropriate Text Size</h2>
+                <p class="normal-text">This text is sized appropriately for readability.</p>
+                
+                <h2>Labeled Form Elements</h2>
+                <form>
+                    <div>
+                        <label for="name">Your name</label>
+                        <input type="text" id="name" name="name">
+                    </div>
+                    <div>
+                        <label for="email">Your email</label>
+                        <input type="email" id="email" name="email">
+                    </div>
+                    <button type="submit">Submit</button>
+                </form>
+                
+                <h2>Proper Heading Structure</h2>
+                <h3>This is a proper h3 after an h2</h3>
+                
+                <h2>Accessible Table</h2>
+                <table border="1">
+                    <caption>Product Information</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Product</th>
+                            <th scope="col">Price</th>
+                            <th scope="col">Quantity</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Item 1</td>
+                            <td>$10.99</td>
+                            <td>5</td>
+                        </tr>
+                        <tr>
+                            <td>Item 2</td>
+                            <td>$24.99</td>
+                            <td>2</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+            
+            <section>
+                <h2>ARIA Best Practices</h2>
+                
+                <button aria-label="Custom action">
+                    This is a proper button
+                </button>
+                
+                <h2>Semantic HTML</h2>
+                <p>The following content uses semantic HTML properly:</p>
+                <article>
+                    <h3>Article Title</h3>
+                    <p>This is an article with proper semantic markup.</p>
+                </article>
+            </section>
+        </main>
+        
+        <footer>
+            <p>&copy; 2023 Accessibility Test Page</p>
+        </footer>
+    </div>
+</body>
+</html>

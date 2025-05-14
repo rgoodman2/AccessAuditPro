@@ -2,12 +2,86 @@ import { JSDOM } from "jsdom";
 import axe from "axe-core";
 import PDFDocument from "pdfkit";
 import fs from "fs";
-import { mkdir } from "fs/promises";
+import { mkdir, readFile } from "fs/promises";
 import path from "path";
 import fetch from "node-fetch";
 // Using Node's built-in setTimeout
 import { createCanvas, Image, loadImage } from "canvas";
 import puppeteer from "puppeteer";
+
+/**
+ * Scans a local test page instead of fetching an external website
+ * This is used for testing when external network access is restricted
+ */
+async function scanTestPage(testPagePath: string): Promise<ScanResult> {
+  try {
+    console.log(`Loading test page: ${testPagePath}`);
+    
+    // Get the absolute path to the test page
+    const fullPath = path.join(process.cwd(), 'server', testPagePath.replace(/^\//, ''));
+    console.log(`Full path: ${fullPath}`);
+    
+    // Read the HTML content
+    const htmlContent = await readFile(fullPath, 'utf-8');
+    console.log(`Test page loaded: ${htmlContent.length} bytes`);
+    
+    // Create a virtual DOM with the fetched content
+    const dom = new JSDOM(htmlContent, {
+      url: `file://${fullPath}`,
+      runScripts: "outside-only",
+      resources: "usable",
+      pretendToBeVisual: true
+    });
+    
+    const { window } = dom;
+    const { document } = window;
+    
+    console.log('Test page loaded in virtual DOM');
+    
+    // Configure axe-core
+    // @ts-ignore - Ignoring typing issue with axe configuration
+    const axeConfig = {
+      runOnly: {
+        type: 'tag',
+        values: ['wcag2a', 'wcag2aa', 'best-practice']
+      }
+    };
+    
+    // Run axe-core for accessibility testing
+    return new Promise<ScanResult>((resolve, reject) => {
+      try {
+        axe.run(document.documentElement, axeConfig, (err, results) => {
+          if (err) {
+            console.error('Axe-core error:', err);
+            reject(new Error('Failed to run accessibility scan: ' + err.message));
+            return;
+          }
+          
+          console.log('Test page scan completed with', 
+            results.violations.length, 'violations,',
+            results.passes.length, 'passes, and',
+            results.incomplete.length, 'incomplete tests');
+          
+          // Create a static test screenshot
+          const testScreenshot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAIAAAD2HxkiAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyJpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuMy1jMDExIDY2LjE0NTY2MSwgMjAxMi8wMi8wNi0xNDo1NjoyNyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RSZWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZVJlZiMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENTNiAoV2luZG93cykiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6QTFCN0Y1OTZCMjUzMTFFQTlDN0JDMjI3NzkwMkM4RDQiIHhtcE1NOkRvY3VtZW50SUQ9InhtcC5kaWQ6QTFCN0Y1OTdCMjUzMTFFQTlDN0JDMjI3NzkwMkM4RDQiPiA8eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDpBMUI3RjU5NEIyNTMxMUVBOUM3QkMyMjc3OTAyQzhENCIgc3RSZWY6ZG9jdW1lbnRJRD0ieG1wLmRpZDpBMUI3RjU5NUIyNTMxMUVBOUM3QkMyMjc3OTAyQzhENCIvPiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wbWV0YT4gPD94cGFja2V0IGVuZD0iciI/Ppjt6T0AAAAGYktHRAD/AP8A/6C9p5MAAAAJcEhZcwAACxMAAAsTAQCanBgAAAFZaVRYdFhNTDpjb20uYWRvYmUueG1wAAAAAAA8eDp4bXBtZXRhIHhtbG5zOng9ImFkb2JlOm5zOm1ldGEvIiB4OnhtcHRrPSJYTVAgQ29yZSA1LjQuMCI+CiAgIDxyZGY6UkRGIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyI+CiAgICAgIDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSIiCiAgICAgICAgICAgIHhtbG5zOnRpZmY9Imh0dHA6Ly9ucy5hZG9iZS5jb20vdGlmZi8xLjAvIj4KICAgICAgICAgPHRpZmY6T3JpZW50YXRpb24+MTwvdGlmZjpPcmllbnRhdGlvbj4KICAgICAgPC9yZGY6RGVzY3JpcHRpb24+CiAgIDwvcmRmOlJERj4KPC94OnhtcG1ldGE+CkzCJ1kAAAwhSURBVHja7N1NiBxXGcDxd2ZnZ2d2dndmZ5Nsspusd9fVXYNZNdmNiV/ZJBrRKAYRBRUP6l0UQRQvevCgHgQPFryoeBAEEcWLBz+i5hIVvyJqYoxuvifTM9szs9+7M53Mzuvu9PR0VXdXdf95fj0Y0qR3a6bq36/eevtV5bsG/98dMgZA4yYwhAC0CYQQgDaBEALQJhBCANoEQghAm0AIAWgTCCEAbQIhBKBNIIQAtAmEEIA2gRAC0CYQQgDaBEIIQJtACAFoEwghAG0CIQSgTSCEALQJhBCANoEQAtAmEEIA2gRCCECbQAgBaBMIIQBtAiEEoE0ghAC0CYQQgDaBEALQJhBCANqEThv/tZQchpTR8fQwpsQWYwA1NjlQe/rG9j/9dILPk8oZUwBqbHqYbm4Pz38rXtwpP/98gs8jnQJUd0K41D84exouXSnHPjhJCHFsgmpbGg4OXxlLJ18XU+O8xbZeXG/8z0GnANW2Nl5eHpXz4wQfdvWdhZ9+tXrqsEcIQXWGLy2tDFK6L9+QhT8m+LDLG+6tM4PTE1PeE8eSndDjgGrJNLkwP3jqxsZ//3P5Fx+/7gdd2Cq+/+epez40jDGFhhdvBKDyA8LRqP/42fjKzvDXn7vuB33zzeL+j88QQlCdGrqUbh0NH7sy/tdPX/chF7aLBz45c/rQMMgUQlCd4bNLK9PRJ9J/f/fpa3Z0L26XDzww0+9R5o4PqsnnhBK+cWX89Ssbv/vMNdvoha3BV+6euXm5H5FtdChBtVy9JLI6Gj56Jf7pJ6/+8ee2iu9+aP7MoZlBD22DEOqOrlxkLyQ8cCU+evXq47Xzt8tH3j+/PNsLCTOEEFRH3xRPWBv1v/Jm/N3nrnru/uJ28dB75958aLrXQ6AQgmqJuXd67uZ0+OQ/x3+4OiK8sF08+NHF03P9iJmvEoLqCZqiA1f6vcc34p9/9Mq5++c2i4c/uHhjfySAEILqyTe9Ps+O+t9+K/7p+1deoH/zcvnIBxdvWO4TQlClA8I0/fN2f3Xa+8ab8a/fv7x3/sJ28dBHF08v9kOWvwIhBNUaMlV64NJ08MS1y9fPbBTf+/DC6aU+GxmEEFRrwC5MR53b7K1Meo9dS3//3vTMZvHQJ5buvGkxVVrxIRCCatW74YFrvdVR/9tvxT9+p/f2dvnwfcunD8/0el1+DwghrVZLI/ZMpFw0h5AQglrViZAFCCGoXolYqgPVQwih+ymhtRCC6rGU0FoIQfVYSmgthPqLTmkEV74nJQ9sQA3YlNBaCHVHY8tOrJTDX6IWL9hXQwgBaJsPfE6/7wNoPkIIQJtACAFoEwghAG0CIQSgTSCEALQJhBCANoEQAtAmEEIA2gRCCECbQAgBaBMIIQBtAiEEoE0ghAC0CYQQgDaBEALQJhBCANoEQohDBxqEEMamHvhSCqDfCKHuAHjDQ6gzbmLvpARCS0IIqokiZ4RQd3S3nzEGoDmYbxBCHdLh/SxAyAoaQmg3TA9hAB3Cn5cKIQBtAiEEoE0ghAC0CYQQgDaBEALQJhBCANoEQghAm0AIAWgTCCEAbQIhBKBNIIRaLTMGaDZCiD3HIhACEEIA2gRCCECbQAgBaBMIIQBtAiEEoE0ghAC0CYQQgDaBEALQJhBCHcYiYmg2QqhDOVRmDNBge3fv6mxmGqXIHvXAm1JqPEJMg2lOCUH16MkXezeqfpgdXk0oE34kw1tKrTuhZJnPsKfNjrXQj+8nFKVkc8RjKyIhhUhhW/FmpDxDSHoZh+PcRnmiZnmlI3vuOxz4jGdpx60XJd0aQkVJP+OTu0P3lIpMTpZYmL+Xm/kacQtP4VxJmcoQzC6tBpfVDa9PnC93UEzWwcUUrvHzNCKEykgIdYjKucHMUr5cJW9ZMmOKm07qS9LrTYzSo/1WYjRLKdnMdFjfF8eUfJG/xD8C4TFKgwCq1K9d2KbgX7vQhQHV9mZCKXjRQhWXu/XcHnuxw3C7IjveSsyQIp3UL5MXXf9rKuMW3y1a3lkIRSaEuuMAxezSXmhXjWQfZoePJVUa8kS80sA1kqplG4MHRrX7vK2TrLsVK/gI75kzN4QbsdT5JRPzrGwZnqf1p9zGcHRLhc2YTurXe1+8hRrOEJN8DF+a0Oa+1hq4VCt8ZV47R8zy1X27lbwPR53mfE7oPudjHW1ej0vJ7Z4TFqlJYmLELi5k15FpR2/nXMPFzFrvk+jZmSRw5v4ZZvpVu/KlOZPWU8rAQKtgDKn0EHfHHLvrRm7FxkajCJ2lObclzCK/aDpnCSKrhpXjcm5/uT/KJhwQuo752J6oPdFOpQ0VBbqrdQZGZcddDDk3bVdNp/sQDyxrFnKuXufKyZjqbSG/DjwDY26zXfmIzeWS13nrzkj3H67WpZTbSgjrCOiYmO1Yx9pdcNS94yL2FslYN/UOwHbFVoNbZS93hc9+QW+dNl/UyVrmNDKV83QbOsKuRU55yJwnC0m6d0JoPlA7XLq4Fd+XO5cMHrCEbsUMvOtXGELmTnONkm5tCJngc1vp7vmE0BQnKCpCuD3cDvSk0LTcfJa9s5XL0hQnhJCdK0Ju10o4GEKu1U5PU05v7RH6DgVdr6wFnhO6VsLJW/YnRUo4SQh9dR4+8TpOYZMnv0/o7pL3JGXl1T1wThjcQYE3H6E7TH0uZ4fmPOB9LJZxYEyYWpZSbgshz/M855W2IELWV6z8Bct5nX3bPbQh5rnVtvK4HUUaWkl3F7zJA3jqPP0yB2yRhZbSTlNKq63UCKHqCLGfA5pC3eXKPtx5AMRM3eGEsCKg3cVWtBLChqpW2xgBqEbnvgB1q9K+N0BoUPW9Aag9oXO7g9AVp+6TZvdJ2HEVz3VY7t7Hia2E9gUZmHvs96J23YGl6/A81b3znNeB2wj+LRSBNYR2O+sQDmySBr4HyR5C1m1cP1Vgh1UWOu50b3kF3kDt2rJ2vw8weJBdp/BzQhP0Xrc9S5D6Xq7rGjXNe4Cmc+mh7eTOXD7tCqRgCJn5E15YZB4UB5+WuQYoHEJa77iKrJxxHbznVQFpbwiFvNnMtcECF1JqCiHXoWLwVGnfWKfgQefejZY7F7HvF9r3SJNrP4ebT903H3AXPPvNa9VRZAq7Oq1ZbQXO7Q6hHWf8rmvNnGC4Ti/dRdp5HWFiCLn2UWA2aM+6HaG28xYqdl5KFTkndEeReXToatrhh2XcSth5CTIhhDzPPYwKqGLHVeScMPTQ0LWnXaWoXPkJVNHbETB6DWFgw3jP/YSuU1p3OPq2kQVv5Qj+TMEb9K7+uDZdvVfx7Jy+eA7aI++c0LOFAq8Rdr+r0HMrNT2EdN4c4qrHjlXlwAsofZ8y2fzOHBNG1/s4A2+/d20GQ8hBbWBe7nQWXFy84kGrTLtb1o41X0zfj6vNZgbNaGAI7by9xsaVYQj1bNjIsMOZi44rmKBcLF17J7CuQHbYhQ25cYHY0RLOgM9dIOrW814ZR663qOu9/2B31s6UbWYI6V5FCHldmPG3x34gGPIhgu+T2/Hl3KoKnBxqJwV2mH2PzLU1glLgEHLnLUMIee0LS9tZ9sNV57WT+cHbLHSa5dq2vkMh+5I9exMEV6V27Tz3IA41HXftW91rzRzvY/Tc5BVcLex+3gztrhgFLovtS61dP1ToOyDzGxQYQl6LHPdmELdlkl7HEvcdUe4tG3jmH9gfe2p0B1pgX9RYCe2xRJHpdx/Cw3fnoaEWGkKuOndf1xJyFOcqK3A7uh2ue+fldtsxIAyc+rr20mHOuXUL9NyTgVPBnW8sDBwoB/ZfFljK7AeC+8Y+Z+BgbTZCqOm0fmsRqAT7q4RQty6WYb0ZVFOXlwJCqM0n5AGnZwC1WA8JIQBtAiEEoE0ghAC0CYQQgDaBEALQJhBCANoEQghAm0AIAWgTCCEAbQIhBKBNIIQAtAmEEIA2gRAC0CYQQgDaBEIIQJtACAFoEwghAG0CIQSgTSCEALQJhBCANoEQAtAmEEIA2gRCCECbQAgBaBMIIQBtAiEEoE0ghAC0CYQQgDb5nwADAG72dGsqqL8cAAAAAElFTkSuQmCC';
+          
+          resolve({
+            violations: results.violations || [],
+            passes: results.passes || [],
+            incomplete: results.incomplete || [],
+            screenshot: testScreenshot
+          });
+        });
+      } catch (error) {
+        console.error('Test page scan error:', error);
+        reject(new Error('Failed to execute accessibility scan on test page'));
+      }
+    });
+  } catch (error) {
+    console.error('Error scanning test page:', error);
+    throw new Error(`Test page scan failed: ${error.message}`);
+  }
+}
 
 interface ScanResult {
   violations: any[];
@@ -112,6 +186,16 @@ async function captureScreenshot(url: string): Promise<string | null> {
 
 export async function scanWebsite(url: string): Promise<ScanResult> {
   try {
+    // Special case for test pages
+    // This allows us to test the scanner without external network access
+    if (url === 'test-sample' || url === 'test') {
+      console.log('Using test sample page instead of external website');
+      return scanTestPage('/test-pages/sample.html');
+    } else if (url === 'test-accessible') {
+      console.log('Using accessible test page instead of external website');
+      return scanTestPage('/test-pages/accessible.html');
+    }
+    
     // Ensure URL has a protocol
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = 'https://' + url;
