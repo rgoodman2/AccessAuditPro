@@ -45,35 +45,58 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createScan(userId: number, scan: InsertScan): Promise<Scan> {
-    // Explicitly define what columns to insert to avoid schema mismatch
-    const [newScan] = await db
-      .insert(scans)
-      .values({
-        url: scan.url,
-        userId,
-        status: "pending",
-      })
-      .returning({
+    try {
+      // Explicitly define what columns to insert to avoid schema mismatch
+      // Do NOT include screenshot column here since it might not exist in all environments
+      const [newScan] = await db
+        .insert(scans)
+        .values({
+          url: scan.url,
+          userId,
+          status: "pending",
+        })
+        .returning({
+          id: scans.id,
+          userId: scans.userId,
+          url: scans.url,
+          status: scans.status,
+          reportUrl: scans.reportUrl,
+          createdAt: scans.createdAt
+        });
+        
+      // Add the screenshot property to match our interface
+      // This is a workaround for database schema differences
+      return {
+        ...newScan,
+        screenshot: null
+      };
+    } catch (error) {
+      console.error('Error creating scan:', error);
+      throw error;
+    }
+  }
+
+  async getUserScans(userId: number): Promise<Scan[]> {
+    try {
+      // Explicitly select columns to avoid issues with schema differences
+      const results = await db.select({
         id: scans.id,
         userId: scans.userId,
         url: scans.url,
         status: scans.status,
         reportUrl: scans.reportUrl,
         createdAt: scans.createdAt
-      });
-    return newScan;
-  }
-
-  async getUserScans(userId: number): Promise<Scan[]> {
-    // Temporarily handle the missing screenshot column by selecting explicit columns
-    return await db.select({
-      id: scans.id,
-      userId: scans.userId,
-      url: scans.url,
-      status: scans.status,
-      reportUrl: scans.reportUrl,
-      createdAt: scans.createdAt
-    }).from(scans).where(eq(scans.userId, userId));
+      }).from(scans).where(eq(scans.userId, userId));
+      
+      // Add screenshot property to match our interface
+      return results.map(scan => ({
+        ...scan,
+        screenshot: null
+      }));
+    } catch (error) {
+      console.error('Error fetching scans:', error);
+      throw error;
+    }
   }
 
   async updateScanStatus(scanId: number, status: string, reportUrl?: string): Promise<void> {
