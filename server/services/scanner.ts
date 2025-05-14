@@ -204,36 +204,38 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
       }
     });
     
-    // Wait for both the scan and screenshot to complete
-    // Use allSettled to prevent one promise from causing the entire operation to fail
-    const results = await Promise.allSettled([
-      scanResultPromise,
-      screenshotPromise
-    ]);
-    
-    // Extract results, handling potential rejections
-    let scanResult: ScanResult | null = null;
-    let screenshot: string | null = null;
-    
-    if (results[0].status === 'fulfilled') {
-      scanResult = results[0].value;
-    } else {
-      console.error('Scan failed:', results[0].reason);
-      throw new Error('Accessibility scan failed: ' + (results[0].reason instanceof Error ? results[0].reason.message : String(results[0].reason)));
+    // Run the scan first, then try to get the screenshot if available
+    // This prevents issues with Promise.allSettled causing timing problems
+    try {
+      // First make sure we have a valid scan result
+      const scanResult = await scanResultPromise;
+      
+      // Then try to get the screenshot, but don't fail if we can't
+      let screenshot: string | null = null;
+      try {
+        screenshot = await screenshotPromise;
+      } catch (screenshotError) {
+        console.warn('Screenshot capture failed but continuing with scan:', screenshotError);
+        // Continue without screenshot
+      }
+      
+      // Return the combined result
+      return {
+        ...scanResult,
+        screenshot: screenshot || undefined
+      };
+    } catch (scanError) {
+      console.error('Scan failed:', scanError);
+      throw new Error('Accessibility scan failed: ' + (scanError instanceof Error ? scanError.message : String(scanError)));
     }
     
-    if (results[1].status === 'fulfilled') {
-      screenshot = results[1].value;
-    } else {
-      console.warn('Screenshot capture failed but continuing with scan:', results[1].reason);
-      // Continue without screenshot
-    }
-    
-    // Combine the results
+    // This code is never reached, but kept for reference
+    /* 
     return {
       ...scanResult,
       screenshot: screenshot || undefined
     };
+    */
 
   } catch (error) {
     console.error('Scan error:', error);
