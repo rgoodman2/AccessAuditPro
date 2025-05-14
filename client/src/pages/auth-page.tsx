@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,10 +29,12 @@ export default function AuthPage() {
     },
   });
 
-  if (user) {
-    setLocation("/");
-    return null;
-  }
+  // Use useEffect for navigation after render to avoid state updates during render
+  useEffect(() => {
+    if (user) {
+      setLocation("/");
+    }
+  }, [user, setLocation]);
 
   const onSubmit = form.handleSubmit((data) => {
     if (activeTab === "login") {
