@@ -64,10 +64,8 @@ async function captureScreenshot(url: string): Promise<string | null> {
       await page.goto(url, { waitUntil: 'networkidle0', timeout: 20000 });
       
       // Wait a moment for any final rendering
-      await new Promise(resolve => {
-        const id = setTimeout(resolve, 2000);
-        // For TypeScript compatibility
-        return () => clearTimeout(id);
+      await new Promise<void>(resolve => {
+        setTimeout(resolve, 2000);
       });
       
       // Take the screenshot
@@ -121,9 +119,9 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
     try {
       // Create an AbortController to handle timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(15000).then(() => {
+      const timeoutId = setTimeout(() => {
         controller.abort();
-      });
+      }, 15000);
 
       const response = await fetch(url, {
         headers: {
