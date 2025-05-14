@@ -64,7 +64,11 @@ async function captureScreenshot(url: string): Promise<string | null> {
       await page.goto(url, { waitUntil: 'networkidle0', timeout: 20000 });
       
       // Wait a moment for any final rendering
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => {
+        setTimeout(() => {
+          resolve(undefined);
+        }, 2000);
+      });
       
       // Take the screenshot
       console.log('Taking screenshot...');
