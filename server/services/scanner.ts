@@ -90,6 +90,109 @@ interface ScanResult {
   screenshot?: string; // Base64 encoded screenshot
 }
 
+// Fallback function to generate a basic report when the scan fails
+export async function generateBasicReport(url: string): Promise<string> {
+  console.log(`Creating fallback basic report for ${url}`);
+  
+  // Create the reports directory if it doesn't exist
+  const reportsDir = path.join(process.cwd(), 'reports');
+  await mkdir(reportsDir, { recursive: true });
+  
+  // Generate filename
+  const timestamp = Date.now();
+  const filename = `basic_report_${timestamp}.pdf`;
+  const outputPath = path.join(reportsDir, filename);
+  
+  // Create a new PDF document
+  const doc = new PDFDocument({
+    size: 'letter',
+    margin: 50,
+    info: {
+      Title: `Basic Accessibility Report for ${url}`,
+      Author: 'AccessScan',
+      Subject: 'Web Accessibility Audit',
+      Keywords: 'accessibility, WCAG, audit, web'
+    }
+  });
+  
+  // Pipe the PDF to a file
+  const writeStream = fs.createWriteStream(outputPath);
+  doc.pipe(writeStream);
+  
+  // Cover page
+  doc.fontSize(30)
+     .fillColor('#2563EB')
+     .text('AccessScan', { align: 'center' });
+  
+  doc.moveDown(1);
+  
+  doc.fontSize(24)
+     .fillColor('#000000')
+     .text('Basic Accessibility Report', { align: 'center' });
+  
+  doc.moveDown(1);
+  
+  doc.fontSize(16)
+     .fillColor('#444444')
+     .text(`URL: ${url}`, { align: 'center' });
+  
+  doc.fontSize(12)
+     .fillColor('#6B7280')
+     .text(`Generated on: ${new Date().toLocaleString()}`, { align: 'center' });
+  
+  doc.moveDown(3);
+  
+  doc.fontSize(14)
+     .fillColor('#111111')
+     .text('Limited Report Information', { align: 'center' });
+  
+  doc.moveDown(1);
+  
+  // Explanation message
+  doc.fontSize(12)
+     .fillColor('#333333')
+     .text(
+       'This is a limited report generated because the full accessibility scan could not be completed. ' +
+       'This may be due to network restrictions, issues with the scanning engine, or problems accessing the website.',
+       { align: 'left', width: 450 }
+     );
+  
+  doc.moveDown(1);
+  
+  doc.text(
+    'For testing the scanner functionality in restricted environments, please use these special test URLs:',
+    { align: 'left', width: 450 }
+  );
+  
+  doc.moveDown(0.5);
+  
+  doc.text('• test-sample - Page with various accessibility issues', { indent: 20 });
+  doc.text('• test-accessible - Page with better accessibility implementation', { indent: 20 });
+  
+  doc.moveDown(1);
+  
+  doc.text(
+    'These test pages are designed to work even in environments with network restrictions and will ' +
+    'allow you to test the full functionality of the scanner.',
+    { align: 'left', width: 450 }
+  );
+  
+  // Finalize the PDF
+  doc.end();
+  
+  return new Promise((resolve, reject) => {
+    writeStream.on('finish', () => {
+      console.log(`Basic report created at: ${outputPath}`);
+      resolve(outputPath);
+    });
+    
+    writeStream.on('error', (error) => {
+      console.error('Error creating basic report:', error);
+      reject(error);
+    });
+  });
+}
+
 // Get the test page content
 const TEST_PAGE = fs.readFileSync(path.join(process.cwd(), 'server/test-pages/index.html'), 'utf8');
 
