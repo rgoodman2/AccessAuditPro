@@ -36,7 +36,8 @@ async function captureScreenshot(url: string): Promise<string | null> {
         return null;
       }
       
-      browser = await puppeteer.launch({ 
+      // Use the environment variable for Chromium if available
+      const launchOptions: any = { 
         headless: true,
         args: [
           '--no-sandbox', 
@@ -45,7 +46,15 @@ async function captureScreenshot(url: string): Promise<string | null> {
           '--disable-dev-shm-usage',
           '--single-process'
         ]
-      });
+      };
+      
+      // If we have a specific path to Chromium/Chrome, use it
+      if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        console.log(`Using Chromium at: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
+        launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+      }
+      
+      browser = await puppeteer.launch(launchOptions);
     } catch (launchError) {
       console.error('Failed to launch browser for screenshot:', launchError);
       // Continue with the scan, just without screenshots
@@ -346,18 +355,30 @@ export async function generateReport(url: string, results: ScanResult): Promise<
          width: 400
        });
     
-    // Add page numbers to all pages except the cover
+    // Add page numbers after we finish generating the report
+    // This avoids page range errors
+    let pageNumbers = false;
+    
     doc.on('pageAdded', () => {
-      const totalPages = doc.bufferedPageRange().count;
-      doc.switchToPage(totalPages - 1);
-      doc.fontSize(10)
-         .fillColor('#6B7280')
-         .text(`Page ${totalPages}`, { align: 'right' });
+      if (pageNumbers) {
+        const pages = doc.bufferedPageRange().count;
+        // We start with page 2 after cover page
+        doc.switchToPage(pages - 1);
+        doc.fontSize(10)
+           .fillColor('#6B7280')
+           .text(`Page ${pages}`, 0.5 * (doc.page.width - 100), doc.page.height - 50, {
+             width: 100,
+             align: 'center'
+           });
+      }
     });
     
   } catch (error) {
     console.error('Error creating cover page:', error);
   }
+  
+  // Enable page numbering now that we're past the cover page
+  pageNumbers = true;
   
   // Executive Summary page
   doc.addPage();
