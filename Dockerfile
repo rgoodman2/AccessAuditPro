@@ -2,7 +2,7 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Install dependencies for canvas
+# Install dependencies for canvas and Puppeteer
 RUN apt-get update && apt-get install -y \
     build-essential \
     libcairo2-dev \
@@ -10,8 +10,22 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libgif-dev \
     librsvg2-dev \
+    # Puppeteer dependencies
+    chromium \
+    fonts-ipafont-gothic \
+    fonts-wqy-zenhei \
+    fonts-thai-tlwg \
+    fonts-kacst \
+    fonts-symbola \
+    fonts-noto \
+    fonts-freefont-ttf \
+    # End Puppeteer dependencies
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Set Puppeteer to use the installed Chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Copy package files
 COPY package*.json ./
