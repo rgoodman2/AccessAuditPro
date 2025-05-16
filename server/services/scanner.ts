@@ -196,7 +196,9 @@ async function captureScreenshot(url: string, violations: any[] = []): Promise<{
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-gpu',
-          '--disable-dev-shm-usage'
+          '--disable-dev-shm-usage',
+          '--single-process',
+          '--no-zygote'
         ]
       });
     } catch (err) {
