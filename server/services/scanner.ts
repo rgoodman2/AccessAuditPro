@@ -174,15 +174,17 @@ export async function generateBasicReport(url: string): Promise<string> {
 }
 
 // Function to capture screenshot using Puppeteer
-async function captureScreenshot(url: string): Promise<string | null> {
+async function captureScreenshot(url: string, violations: any[] = []): Promise<{full: string, elements: {[key: string]: string}}> {
   try {
-    console.log(`Capturing screenshot for ${url}`);
+    console.log(`Capturing screenshots for ${url}`);
     
     // Check if we're trying to access a special test page
     if (['test', 'test-sample', 'test-accessible'].includes(url)) {
-      console.log('Using static screenshot for test page');
-      // Return a simple static image for test pages
-      return 'iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAMAAABOo35HAAADAFBMVE...';
+      console.log('Using static screenshots for test page');
+      return {
+        full: 'iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAMAAABOo35HAAADAFBMVE...',
+        elements: {}
+      };
     }
     
     // Try to launch Puppeteer
@@ -199,7 +201,7 @@ async function captureScreenshot(url: string): Promise<string | null> {
       });
     } catch (err) {
       console.error('Failed to launch browser:', err);
-      return null;
+      return { full: '', elements: {} };
     }
 
     try {
@@ -216,15 +218,56 @@ async function captureScreenshot(url: string): Promise<string | null> {
         waitUntil: 'networkidle2',
         timeout: 15000
       });
-      
-      // Take screenshot
-      const screenshot = await page.screenshot({
+
+      // Take full page screenshot
+      const fullScreenshot = await page.screenshot({
         encoding: 'base64',
         type: 'jpeg',
         quality: 70
-      });
+      }) as string;
+
+      // Capture screenshots of violation elements
+      const elementScreenshots: {[key: string]: string} = {};
       
-      return screenshot as string;
+      for (const violation of violations) {
+        if (violation.nodes && violation.nodes.length > 0) {
+          for (const node of violation.nodes) {
+            try {
+              // Try to find the element using the target selector
+              const element = await page.$(node.target?.[0] || node.html);
+              if (element) {
+                // Highlight the element
+                await page.evaluate((selector) => {
+                  const el = document.querySelector(selector);
+                  if (el) {
+                    el.style.outline = '3px solid red';
+                    el.style.backgroundColor = 'rgba(255, 0, 0, 0.2)';
+                  }
+                }, node.target?.[0] || node.html);
+
+                // Take screenshot of the element with some padding
+                const elementScreenshot = await element.screenshot({
+                  encoding: 'base64',
+                  type: 'jpeg',
+                  quality: 70,
+                  padding: 10
+                });
+
+                // Store screenshot with violation ID and index
+                const key = `${violation.id}_${violation.nodes.indexOf(node)}`;
+                elementScreenshots[key] = elementScreenshot as string;
+              }
+            } catch (error) {
+              console.error(`Failed to capture element screenshot for ${violation.id}:`, error);
+            }
+          }
+        }
+      }
+      
+      return {
+        full: fullScreenshot,
+        elements: elementScreenshots
+      };
     } catch (err) {
       console.error('Error during screenshot:', err);
       return null;
@@ -340,15 +383,16 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
         });
       });
       
-      // Get the screenshot if it was successful
-      const screenshot = await screenshotPromise;
+      // Take screenshots after we have the violations
+      const screenshots = await captureScreenshot(url, results.violations);
       
-      // Return the scan results
+      // Return the scan results with all screenshots
       return {
         violations: results.violations || [],
         passes: results.passes || [],
         incomplete: results.incomplete || [],
-        screenshot: screenshot || undefined
+        screenshot: screenshots.full,
+        elementScreenshots: screenshots.elements
       };
     } catch (error) {
       console.error('Error running axe-core:', error);
