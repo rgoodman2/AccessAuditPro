@@ -175,13 +175,26 @@ export async function generateBasicReport(url: string): Promise<string> {
 
 // Function to capture screenshot using Puppeteer
 async function captureScreenshot(url: string, violations: any[] = []): Promise<{full: string, elements: {[key: string]: string}}> {
+  let browser;
   try {
     console.log(`Capturing screenshots for ${url}`);
+    
+    // Launch browser with specific args for Replit environment
+    browser = await puppeteer.launch({
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-gpu',
+        '--disable-dev-shm-usage'
+      ]
+    });
+
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
 
     // Check if we're trying to access a special test page
     if (['test', 'test-sample', 'test-accessible'].includes(url)) {
-        // Create a virtual page with test content
-        const page = await browser.newPage();
         await page.setContent(`
           <!DOCTYPE html>
           <html>
@@ -193,21 +206,20 @@ async function captureScreenshot(url: string, violations: any[] = []): Promise<{
             </body>
           </html>
         `);
-
-        const fullScreenshot = await page.screenshot({
-          encoding: 'base64',
-          type: 'jpeg',
-          quality: 80,
-          fullPage: true
+    } else {
+        // Navigate to actual URL
+        await page.goto(url, {
+          waitUntil: 'networkidle0',
+          timeout: 30000
         });
+    }
 
-        await page.close();
-
-        return {
-          full: fullScreenshot as string,
-          elements: {}
-        };
-      }
+    // Take full page screenshot
+    const fullScreenshot = await page.screenshot({
+      encoding: 'base64',
+      type: 'png',
+      fullPage: true
+    });
 
     // Try to launch Puppeteer
     let browser;
@@ -292,17 +304,43 @@ async function captureScreenshot(url: string, violations: any[] = []): Promise<{
         full: fullScreenshot,
         elements: elementScreenshots
       };
-    } catch (err) {
-      console.error('Error during screenshot:', err);
-      return null;
-    } finally {
-      if (browser) {
-        await browser.close();
+    const elementScreenshots = {};
+    
+    // Capture violation screenshots
+    for (const violation of violations) {
+      if (violation.nodes && violation.nodes.length > 0) {
+        for (const node of violation.nodes) {
+          try {
+            const element = await page.$(node.target?.[0] || node.html);
+            if (element) {
+              const elementScreenshot = await element.screenshot({
+                encoding: 'base64',
+                type: 'png'
+              });
+              elementScreenshots[`${violation.id}_${violation.nodes.indexOf(node)}`] = elementScreenshot;
+            }
+          } catch (elementError) {
+            console.warn(`Failed to capture element screenshot: ${elementError.message}`);
+          }
+        }
       }
     }
+
+    return {
+      full: fullScreenshot as string,
+      elements: elementScreenshots
+    };
+
   } catch (error) {
     console.error('Screenshot capture failed:', error);
-    return null;
+    return {
+      full: '',
+      elements: {}
+    };
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
   }
 }
 
