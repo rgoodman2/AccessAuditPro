@@ -85,49 +85,18 @@ export default function HomePage() {
             Enter your website URL below to check for WCAG 2.1 compliance
           </p>
 
-          <Alert className="mb-6">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Test Pages for Scanning</AlertTitle>
-            <AlertDescription className="text-left">
-              <p className="mb-2">Due to network restrictions in deployment, please use these special test URLs:</p>
-              <ul className="list-disc pl-5 mb-2">
-                <li><strong>test-sample</strong> or <strong>test</strong> - Page with accessibility issues</li>
-                <li><strong>test-accessible</strong> - Page with better accessibility</li>
-              </ul>
-              <p><a href="/test-pages" target="_blank" className="underline text-primary">View test pages documentation</a></p>
-            </AlertDescription>
-          </Alert>
-
-          <form onSubmit={onSubmit} className="flex flex-col gap-4">
-            <div className="flex gap-4">
-              <Input
-                placeholder="Enter test-sample or test-accessible"
-                className="flex-1"
-                {...form.register("url")}
-              />
-              <Button type="submit" disabled={scanMutation.isPending}>
-                {scanMutation.isPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                Start Scan
-              </Button>
-            </div>
-            <div className="flex justify-center gap-4 mt-2">
-              <Button 
-                type="button" 
-                variant="outline"
-                onClick={() => form.setValue("url", "test-sample")}
-              >
-                Use Test Sample
-              </Button>
-              <Button 
-                type="button" 
-                variant="outline"
-                onClick={() => form.setValue("url", "test-accessible")}
-              >
-                Use Accessible Sample
-              </Button>
-            </div>
+          <form onSubmit={onSubmit} className="flex gap-4">
+            <Input
+              placeholder="example.com"
+              className="flex-1"
+              {...form.register("url")}
+            />
+            <Button type="submit" disabled={scanMutation.isPending}>
+              {scanMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Start Scan
+            </Button>
           </form>
         </div>
       </main>
