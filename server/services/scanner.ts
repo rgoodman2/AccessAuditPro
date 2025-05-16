@@ -192,13 +192,13 @@ async function captureScreenshot(url: string, violations: any[] = []): Promise<{
     try {
       browser = await puppeteer.launch({
         headless: 'new',
-        executablePath: '/usr/bin/chromium',
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-gpu',
           '--disable-dev-shm-usage',
-          '--disable-software-rasterizer'
+          '--single-process',
+          '--no-zygote'
         ]
       });
     } catch (err) {
