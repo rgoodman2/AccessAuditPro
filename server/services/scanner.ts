@@ -87,7 +87,10 @@ interface ScanResult {
   violations: any[];
   passes: any[];
   incomplete: any[];
-  screenshot?: string; // Base64 encoded screenshot
+  screenshot?: string; // Base64 encoded screenshot (deprecated)
+  error?: string;      // Error message if scan failed
+  scanDateTime?: string; // ISO timestamp of when scan was performed
+  url?: string;        // URL that was scanned
 }
 
 // Fallback function to generate a basic report when the scan fails
@@ -518,23 +521,29 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
       // First make sure we have a valid scan result
       const scanResult = await scanResultPromise;
       
-      // Then try to get the screenshot, but don't fail if we can't
-      let screenshot: string | null = null;
-      try {
-        screenshot = await screenshotPromise;
-      } catch (screenshotError) {
-        console.warn('Screenshot capture failed but continuing with scan:', screenshotError);
-        // Continue without screenshot
-      }
+      // We'll skip the screenshot functionality completely
+      // This is because Replit's environment often blocks headless browser functionality
+      console.log('Skipping screenshot capture, using enhanced text descriptions instead');
       
-      // Return the combined result
+      // Return scan result with metadata about the scan
       return {
         ...scanResult,
-        screenshot: screenshot || undefined
+        scanDateTime: new Date().toISOString(),
+        url: url
       };
     } catch (scanError) {
       console.error('Scan failed:', scanError);
-      throw new Error('Accessibility scan failed: ' + (scanError instanceof Error ? scanError.message : String(scanError)));
+      
+      // Instead of throwing an error, return a partial result with error information
+      // This allows us to still generate a report with details about what went wrong
+      return {
+        violations: [],
+        passes: [],
+        incomplete: [],
+        error: scanError instanceof Error ? scanError.message : String(scanError),
+        scanDateTime: new Date().toISOString(),
+        url: url
+      };
     }
     
     // This code is never reached, but kept for reference
@@ -623,6 +632,30 @@ export async function generateReport(url: string, results: ScanResult): Promise<
     doc.fontSize(12)
        .fillColor('#6B7280')
        .text(`Scan Date: ${new Date().toLocaleString()}`, { align: 'center' });
+       
+    // If we have an error, display it prominently
+    if (results.error) {
+      doc.moveDown(1);
+      doc.fontSize(14)
+         .fillColor('#DC2626')
+         .text('Scanning Error Detected', { align: 'center' });
+      
+      doc.moveDown(0.5);
+      doc.fontSize(12)
+         .fillColor('#DC2626')
+         .text(`We encountered an issue while scanning this website: ${results.error}`, { 
+           align: 'center',
+           width: 400
+         });
+         
+      doc.moveDown(0.5);
+      doc.fontSize(12)
+         .fillColor('#6B7280')
+         .text('The website may have restrictions that prevent automated scanning, or there might be network connectivity issues. The report will contain limited information.', { 
+           align: 'center',
+           width: 400
+         });
+    }
     
     // Add page information section instead of screenshots
     doc.moveDown(1);
@@ -688,7 +721,50 @@ export async function generateReport(url: string, results: ScanResult): Promise<
   doc.addPage();
   addHeading('Executive Summary', { align: 'left' });
   
-  // Calculate compliance metrics
+  // Check if we have an error
+  if (results.error) {
+    // Show error information in the report
+    doc.fontSize(14)
+       .fillColor('#DC2626')
+       .text('Scan Limitations', { underline: true });
+    
+    doc.moveDown(0.5);
+    doc.fontSize(12)
+       .fillColor('#4B5563')
+       .text(`We encountered the following issue while attempting to scan ${url}:`);
+    
+    doc.moveDown(0.5);
+    doc.fontSize(12)
+       .fillColor('#DC2626')
+       .text(results.error, { indent: 20 });
+    
+    doc.moveDown(1);
+    doc.fontSize(12)
+       .fillColor('#4B5563')
+       .text(`This may be due to one or more of the following reasons:
+1. The website blocks automated scanning tools
+2. Network connectivity issues or firewalls
+3. The website has CORS restrictions that prevent content access
+4. The website requires authentication before content can be accessed
+5. The content is loaded dynamically after the initial HTML is loaded`);
+    
+    doc.moveDown(1);
+    doc.fontSize(14)
+       .fillColor('#000000')
+       .text('Recommendations');
+    
+    doc.moveDown(0.5);
+    doc.fontSize(12)
+       .fillColor('#4B5563')
+       .text(`• Consider scanning the website in a different environment with fewer network restrictions
+• Try scanning the website after authenticating (if applicable)
+• Perform a manual accessibility audit to supplement automated testing
+• Contact the website administrator to request permission for automated scanning`);
+    
+    return; // Skip the regular metrics display
+  }
+  
+  // Calculate compliance metrics for normal scan results
   const totalIssues = results.violations.length;
   const criticalIssues = results.violations.filter(v => v.impact === 'critical' || v.impact === 'serious').length;
   const moderateIssues = results.violations.filter(v => v.impact === 'moderate').length;
