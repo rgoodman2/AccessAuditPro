@@ -5,6 +5,7 @@ import { storage } from "./storage";
 import { insertScanSchema, reportSettingsSchema } from "@shared/schema";
 import { z } from "zod";
 import { scanWebsite, generateReport, generateBasicReport } from "./services/scanner";
+import { runLighthouseScan, generateLighthouseReport } from "./services/lighthouse";
 import path from "path";
 import express from "express";
 
