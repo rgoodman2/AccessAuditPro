@@ -112,19 +112,74 @@ export default function HomePage() {
             Enter your website URL below to check for WCAG 2.1 compliance
           </p>
 
-          <form onSubmit={onSubmit} className="flex gap-4">
-            <Input
-              placeholder="example.com"
-              className="flex-1"
-              {...form.register("url")}
-            />
-            <Button type="submit" disabled={scanMutation.isPending}>
-              {scanMutation.isPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Start Scan
-            </Button>
-          </form>
+          <div className="max-w-md mx-auto">
+            <div className="p-6 border rounded-lg bg-card shadow-sm">
+              <form className="space-y-4">
+                <div>
+                  <Input
+                    placeholder="example.com"
+                    className="w-full"
+                    {...form.register("url")}
+                  />
+                  {form.formState.errors.url && (
+                    <p className="text-destructive text-sm mt-1">
+                      {form.formState.errors.url.message}
+                    </p>
+                  )}
+                </div>
+                
+                <div className="flex flex-col gap-3 pt-2">
+                  <Button
+                    type="button"
+                    onClick={onSubmit}
+                    disabled={scanMutation.isPending || lighthouseScanMutation.isPending}
+                    className="w-full"
+                  >
+                    {scanMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Scanning...
+                      </>
+                    ) : (
+                      "Standard Scan"
+                    )}
+                  </Button>
+                  
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background px-2 text-muted-foreground">
+                        Or
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <Button
+                    type="button"
+                    onClick={onLighthouseScan}
+                    disabled={lighthouseScanMutation.isPending || scanMutation.isPending}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    {lighthouseScanMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Running Lighthouse...
+                      </>
+                    ) : (
+                      "Google Lighthouse Scan"
+                    )}
+                  </Button>
+                </div>
+                
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  Lighthouse may work better for scanning external websites.
+                </p>
+              </form>
+            </div>
+          </div>
         </div>
       </main>
     </div>
