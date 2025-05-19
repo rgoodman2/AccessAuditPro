@@ -5,7 +5,7 @@ import { storage } from "./storage";
 import { insertScanSchema, reportSettingsSchema } from "@shared/schema";
 import { z } from "zod";
 import { scanWebsite, generateReport, generateBasicReport } from "./services/scanner";
-import { runLighthouseScan, generateLighthouseReport } from "./services/lighthouse";
+import { runLighthouseScan, generateLighthouseReport } from "./services/lighthouse-cli";
 import path from "path";
 import express from "express";
 
@@ -124,6 +124,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(400).json(error.errors);
       } else {
         console.error("Scan creation failed:", error);
+        res.status(500).send("Internal server error");
+      }
+    }
+  });
+
+  // New endpoint for Lighthouse accessibility scanning
+  app.post("/api/lighthouse-scans", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    
+    try {
+      const data = insertScanSchema.parse(req.body);
+      
+      // Create scan with pending status
+      const scan = await storage.createScan(req.user!.id, data);
+      
+      // Return scan ID immediately
+      res.status(201).json({
+        ...scan,
+        scanType: 'lighthouse'
+      });
+      
+      // Run Lighthouse scan asynchronously
+      (async () => {
+        try {
+          console.log(`Starting Lighthouse accessibility scan for URL: ${data.url}`);
+          
+          // Run Lighthouse scan
+          const lighthouseResults = await runLighthouseScan(data.url);
+          console.log("Lighthouse scan completed successfully");
+          
+          // Generate PDF report from results
+          const reportPath = await generateLighthouseReport(lighthouseResults);
+          const reportUrl = `/reports/${path.basename(reportPath)}`;
+          console.log(`Lighthouse report generated at: ${reportPath}`);
+          
+          // Update scan status with report URL
+          await storage.updateScanStatus(scan.id, "completed", reportUrl);
+          console.log(`Lighthouse scan ID ${scan.id} marked as completed`);
+        } catch (error) {
+          console.error("Lighthouse scan error:", error);
+          await storage.updateScanStatus(scan.id, "failed");
+        }
+      })().catch(err => {
+        console.error("Unhandled error in Lighthouse scan:", err);
+      });
+      
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json(error.errors);
+      } else {
+        console.error("Lighthouse scan creation failed:", error);
         res.status(500).send("Internal server error");
       }
     }
