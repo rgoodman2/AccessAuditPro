@@ -685,20 +685,83 @@ export async function generateReport(url: string, results: ScanResult): Promise<
            .fillColor('#4B5563')
            .text(violation.helpUrl, { indent: 20, link: violation.helpUrl });
         
-        // If nodes are available, show a specific example
+        // Enhanced location details with more context
         if (violation.nodes && violation.nodes.length > 0) {
-          const node = violation.nodes[0];
-          if (node.html) {
-            doc.moveDown(0.5);
-            doc.fontSize(12)
+          doc.moveDown(0.5);
+          doc.fontSize(12)
+             .fillColor('#000000')
+             .text('Location Details:');
+          
+          // Loop through up to 3 examples with detailed location information
+          violation.nodes.slice(0, 3).forEach((node, nodeIndex) => {
+            doc.moveDown(0.25);
+            
+            // Extract location information - selector path shows where in the DOM
+            const selector = node.target ? node.target.join(' > ') : 'Unknown location';
+            const htmlSnippet = node.html || 'No HTML available';
+            
+            // Try to extract any available extra data like colors, dimensions, etc.
+            let extraData = '';
+            
+            if (node.any) {
+              // Look for color contrast information
+              const colorCheck = node.any.find(check => check.id === 'color-contrast');
+              if (colorCheck && colorCheck.data) {
+                extraData += `Color contrast: ${colorCheck.data.contrastRatio || 'unknown'} ratio `;
+                if (colorCheck.data.fgColor) {
+                  extraData += `(foreground: ${colorCheck.data.fgColor}, `;
+                }
+                if (colorCheck.data.bgColor) {
+                  extraData += `background: ${colorCheck.data.bgColor}) `;
+                }
+              }
+              
+              // Extract any other useful data
+              node.any.forEach(check => {
+                if (check.data && !extraData.includes(check.id)) {
+                  if (check.data.attributes) {
+                    extraData += `Attributes: ${JSON.stringify(check.data.attributes)} `;
+                  }
+                  if (check.data.nodeName) {
+                    extraData += `Element type: ${check.data.nodeName} `;
+                  }
+                }
+              });
+            }
+            
+            doc.fontSize(11)
                .fillColor('#000000')
-               .text('Example HTML:');
+               .text(`Element ${nodeIndex + 1}:`);
             
             doc.fontSize(10)
-               .fillColor('#6B7280')
-               .text(node.html.substring(0, 150) + (node.html.length > 150 ? '...' : ''), 
-                 { indent: 20 });
-          }
+               .fillColor('#4B5563')
+               .text(`Location: ${selector}`, { 
+                 indent: 20,
+                 width: 450
+               });
+            
+            doc.fontSize(10)
+               .fillColor('#4B5563')
+               .text(`HTML: ${htmlSnippet.substring(0, 150)}${htmlSnippet.length > 150 ? '...' : ''}`, { 
+                 indent: 20,
+                 width: 450
+               });
+            
+            if (extraData) {
+              doc.fontSize(10)
+                 .fillColor('#4B5563')
+                 .text(`Details: ${extraData}`, { 
+                   indent: 20,
+                   width: 450
+                 });
+            }
+          });
+          
+          // Total count of affected elements
+          doc.moveDown(0.5);
+          doc.fontSize(10)
+             .fillColor('#4B5563')
+             .text(`Total affected elements: ${violation.nodes.length}${violation.nodes.length > 3 ? ` (${violation.nodes.length - 3} more not shown)` : ''}`);
         }
         
         doc.moveDown(1);
