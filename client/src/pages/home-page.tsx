@@ -47,9 +47,36 @@ export default function HomePage() {
       });
     },
   });
+  
+  // Add Lighthouse scan mutation
+  const lighthouseScanMutation = useMutation({
+    mutationFn: async (data: { url: string }) => {
+      const res = await apiRequest("POST", "/api/lighthouse-scans", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scans"] });
+      toast({
+        title: "Lighthouse scan started",
+        description: "Google Lighthouse is analyzing your website for accessibility issues.",
+      });
+      form.reset();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Lighthouse scan failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   const onSubmit = form.handleSubmit((data) => {
     scanMutation.mutate(data);
+  });
+
+  const onLighthouseScan = form.handleSubmit((data) => {
+    lighthouseScanMutation.mutate(data);
   });
 
   return (
