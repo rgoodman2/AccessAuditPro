@@ -307,9 +307,10 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
     console.log('Scanning real website:', url);
     
     // Try multiple approaches to fetch the website
-    let htmlContent;
+    let htmlContent = '';
     let fetchAttempts = 0;
-    const maxFetchAttempts = 3;
+    const maxFetchAttempts = 5; // Increased retry attempts
+    let lastError = '';
     
     while (fetchAttempts < maxFetchAttempts) {
       try {
@@ -318,41 +319,103 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
         // Add cache-busting parameter to avoid cached responses
         const fetchUrl = `${url}${url.includes('?') ? '&' : '?'}_cb=${Date.now()}`;
         
-        // Use different fetch options on each attempt
+        // Use different fetch options on each attempt with varying user agents
+        const userAgents = [
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36',
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.4 Safari/605.1.15',
+          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.51 Safari/537.36 Edg/99.0.1150.30',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0'
+        ];
+        
         const fetchOptions = {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36',
+            'User-Agent': userAgents[fetchAttempts % userAgents.length],
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
           },
-          timeout: 15000, // 15 seconds timeout
-          follow: 5,      // Follow up to 5 redirects
+          timeout: 20000, // Increased timeout
+          follow: 10,     // Increased redirect follows
         };
+        
+        console.log(`Using User-Agent: ${fetchOptions.headers['User-Agent']}`);
         
         const response = await fetch(fetchUrl, fetchOptions);
         
+        // Handle different HTTP statuses
         if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
+          const statusText = `HTTP error! Status: ${response.status} ${response.statusText}`;
+          console.error(statusText);
+          
+          // Special handling for specific status codes
+          if (response.status === 403) {
+            // Try to get content even with 403 status
+            const forbiddenContent = await response.text();
+            if (forbiddenContent && forbiddenContent.length > 1000) {
+              console.log('Got content despite 403 status, will attempt to process it');
+              htmlContent = forbiddenContent;
+              break;
+            }
+            throw new Error(`Access forbidden (403) - The website may be blocking our requests`);
+          } else if (response.status === 429) {
+            throw new Error('Rate limited (429) - Too many requests to the website');
+          } else {
+            throw new Error(statusText);
+          }
         }
         
         htmlContent = await response.text();
         
         if (htmlContent && htmlContent.length > 0) {
           console.log(`Successfully fetched ${url} (${htmlContent.length} bytes)`);
+          
+          // Check if we actually got HTML and not some other response like JSON
+          if (!htmlContent.includes('<html') && !htmlContent.includes('<body')) {
+            const contentPreview = htmlContent.substring(0, 200);
+            console.warn(`Warning: Response may not be HTML: ${contentPreview}...`);
+            
+            // If it looks like JSON, try to extract a meaningful error message
+            if (contentPreview.includes('{') && contentPreview.includes('}')) {
+              try {
+                const jsonResponse = JSON.parse(htmlContent);
+                console.log('Received JSON response:', jsonResponse);
+                if (jsonResponse.error) {
+                  throw new Error(`API error: ${jsonResponse.error}`);
+                }
+              } catch (jsonError) {
+                // Not valid JSON or no error property
+              }
+            }
+            
+            // If HTML tags are not found but content is substantial, we'll try to continue
+            if (htmlContent.length > 5000) {
+              console.log('Content is substantial, will attempt to process it');
+              break;
+            }
+            
+            throw new Error('Received response does not appear to be HTML');
+          }
+          
           break; // Success, exit the loop
         } else {
           throw new Error('Received empty response');
         }
       } catch (fetchError) {
         fetchAttempts++;
-        console.error(`Fetch attempt ${fetchAttempts} failed:`, fetchError);
+        const errorMessage = fetchError instanceof Error ? fetchError.message : String(fetchError);
+        lastError = errorMessage;
+        console.error(`Fetch attempt ${fetchAttempts} failed:`, errorMessage);
         
         if (fetchAttempts >= maxFetchAttempts) {
-          throw new Error(`Failed to fetch ${url} after ${maxFetchAttempts} attempts: ${fetchError.message}`);
+          throw new Error(`Failed to fetch ${url} after ${maxFetchAttempts} attempts: ${lastError}`);
         }
         
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Progressively longer waits between retries
+        const waitTime = 2000 * fetchAttempts;
+        console.log(`Waiting ${waitTime}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
       }
     }
     
@@ -362,16 +425,50 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
     // Create a virtual DOM with the fetched content
     let dom;
     try {
+      // First attempt basic sanitization if needed
+      if (htmlContent.includes('<script') || htmlContent.includes('<iframe')) {
+        console.log('Content contains scripts or iframes, applying basic sanitization');
+        // Basic sanitization to prevent common issues
+        htmlContent = htmlContent
+          .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove script tags
+          .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '') // Remove iframe tags
+          .replace(/<link[^>]*>/gi, ''); // Remove external resource links
+      }
+      
+      // Try to ensure we have a proper HTML structure
+      if (!htmlContent.includes('<html')) {
+        console.log('Adding HTML wrapper to content');
+        htmlContent = `<!DOCTYPE html><html><head><title>Scanned Page</title></head><body>${htmlContent}</body></html>`;
+      }
+      
       dom = new JSDOM(htmlContent, {
         url: url, // Use the actual URL for relative paths
         runScripts: "outside-only", // Don't run scripts for safety
         resources: "usable", // Allow loading resources
         pretendToBeVisual: true // This helps with some visual-specific tests
       });
+      
+      // Basic validation that we have a usable DOM
+      if (!dom.window.document.body) {
+        throw new Error('Created DOM does not have a body element');
+      }
     } catch (error) {
       console.error('Error creating JSDOM:', error);
-      throw new Error('Failed to parse website HTML: ' + 
-        (error instanceof Error ? error.message : String(error)));
+      
+      // Try a more minimal approach as fallback
+      try {
+        console.log('Attempting fallback minimal DOM creation');
+        dom = new JSDOM(`<!DOCTYPE html><html><head><title>Fallback</title></head><body>
+          <div id="content">${htmlContent}</div>
+        </body></html>`, {
+          url: url,
+          runScripts: "outside-only"
+        });
+      } catch (fallbackError) {
+        console.error('Fallback DOM creation also failed:', fallbackError);
+        throw new Error('Failed to parse website HTML: ' + 
+          (error instanceof Error ? error.message : String(error)));
+      }
     }
 
     const { window } = dom;
