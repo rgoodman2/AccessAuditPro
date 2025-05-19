@@ -527,46 +527,30 @@ export async function generateReport(url: string, results: ScanResult): Promise<
        .fillColor('#6B7280')
        .text(`Scan Date: ${new Date().toLocaleString()}`, { align: 'center' });
     
-    // Add website screenshot if available
-    if (results.screenshot) {
-      try {
-        doc.moveDown(1);
-        
-        // Center the screenshot with some margin
-        const pageWidth = doc.page.width - 100; // 50px margin on each side
-        const height = 300; // Fixed height for consistency
-        
-        // We'll skip the screenshot if it causes errors
-        if (results.screenshot && results.screenshot.startsWith('data:image/')) {
-          // The screenshot is already a data URL
-          doc.image(results.screenshot, {
-            fit: [pageWidth, height],
-            align: 'center',
-            valign: 'center'
-          });
-        } else if (results.screenshot) {
-          // Just raw base64 data
-          try {
-            doc.image(`data:image/png;base64,${results.screenshot}`, {
-              fit: [pageWidth, height],
-              align: 'center',
-              valign: 'center'
-            });
-          } catch (err) {
-            console.log('Could not parse screenshot as PNG, skipping');
-          }
-        }
-        
-        // Add caption
-        doc.moveDown(0.5);
-        doc.fontSize(10)
-           .fillColor('#6B7280')
-           .text('Website Screenshot', { align: 'center' });
-           
-      } catch (screenshotError) {
-        console.error('Error adding screenshot to PDF:', screenshotError);
-      }
-    }
+    // Add page information section instead of screenshots
+    doc.moveDown(1);
+    doc.fontSize(14)
+       .fillColor('#000000')
+       .text('Scan Information', { align: 'left' });
+    
+    doc.moveDown(0.5);
+    doc.fontSize(12)
+       .fillColor('#333333')
+       .text(`• URL: ${url}`, { align: 'left' });
+    
+    doc.fontSize(12)
+       .fillColor('#333333')
+       .text(`• Scan Date: ${new Date().toLocaleString()}`, { align: 'left' });
+    
+    doc.fontSize(12)
+       .fillColor('#333333')
+       .text(`• Total Issues Found: ${results.violations.length}`, { align: 'left' });
+    
+    doc.fontSize(12)
+       .fillColor('#333333')
+       .text(`• Standards Tested: WCAG 2.1 A, AA, and Best Practices`, { align: 'left' });
+    
+    doc.moveDown(0.5);
     
     doc.moveDown(2);
     
