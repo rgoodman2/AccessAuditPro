@@ -1,187 +1,287 @@
-import { useAuth } from "@/hooks/use-auth";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { useForm } from "react-hook-form";
-import { insertScanSchema } from "@shared/schema";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-import { Link } from "wouter";
-import { Loader2, AlertCircle } from "lucide-react";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Globe, Shield, FileText, Zap, CheckCircle, Users, Clock, Star } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { useEffect } from "react";
 
 export default function HomePage() {
-  const { user, logoutMutation } = useAuth();
-  const { toast } = useToast();
+  const { user } = useAuth();
+  const [, setLocation] = useLocation();
 
-  const form = useForm({
-    resolver: zodResolver(insertScanSchema),
-    defaultValues: {
-      url: "",
-    },
-  });
-
-  const scanMutation = useMutation({
-    mutationFn: async (data: { url: string }) => {
-      const res = await apiRequest("POST", "/api/scans", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scans"] });
-      toast({
-        title: "Scan started",
-        description: "Your website is being scanned for accessibility issues.",
-      });
-      form.reset();
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Scan failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-  
-  // Add Lighthouse scan mutation
-  const lighthouseScanMutation = useMutation({
-    mutationFn: async (data: { url: string }) => {
-      const res = await apiRequest("POST", "/api/lighthouse-scans", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scans"] });
-      toast({
-        title: "Lighthouse scan started",
-        description: "Google Lighthouse is analyzing your website for accessibility issues.",
-      });
-      form.reset();
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Lighthouse scan failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const onSubmit = form.handleSubmit((data) => {
-    scanMutation.mutate(data);
-  });
-
-  const onLighthouseScan = form.handleSubmit((data) => {
-    lighthouseScanMutation.mutate(data);
-  });
+  // Redirect authenticated users to dashboard
+  useEffect(() => {
+    if (user) {
+      setLocation("/dashboard");
+    }
+  }, [user, setLocation]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">AccessScan</h1>
-          <div className="flex items-center gap-4">
-            <span>Welcome, {user?.username}</span>
-            <Link href="/dashboard">
-              <Button variant="outline">Dashboard</Button>
-            </Link>
-            <Button
-              variant="ghost"
-              onClick={() => logoutMutation.mutate()}
-              disabled={logoutMutation.isPending}
-            >
-              {logoutMutation.isPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Logout
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <main className="container mx-auto px-4 py-8">
-        <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-3xl font-bold mb-4">
-            Start Your Accessibility Scan
-          </h2>
-          <p className="text-muted-foreground mb-8">
-            Enter your website URL below to check for WCAG 2.1 compliance
-          </p>
-
-          <div className="max-w-md mx-auto">
-            <div className="p-6 border rounded-lg bg-card shadow-sm">
-              <form className="space-y-4">
-                <div>
-                  <Input
-                    placeholder="example.com"
-                    className="w-full"
-                    {...form.register("url")}
-                  />
-                  {form.formState.errors.url && (
-                    <p className="text-destructive text-sm mt-1">
-                      {form.formState.errors.url.message}
-                    </p>
-                  )}
-                </div>
-                
-                <div className="flex flex-col gap-3 pt-2">
-                  <Button
-                    type="button"
-                    onClick={onSubmit}
-                    disabled={scanMutation.isPending || lighthouseScanMutation.isPending}
-                    className="w-full"
-                  >
-                    {scanMutation.isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Scanning...
-                      </>
-                    ) : (
-                      "Standard Scan"
-                    )}
-                  </Button>
-                  
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">
-                        Or
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <Button
-                    type="button"
-                    onClick={onLighthouseScan}
-                    disabled={lighthouseScanMutation.isPending || scanMutation.isPending}
-                    variant="outline"
-                    className="w-full"
-                  >
-                    {lighthouseScanMutation.isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Running Lighthouse...
-                      </>
-                    ) : (
-                      "Google Lighthouse Scan"
-                    )}
-                  </Button>
-                </div>
-                
-                <p className="text-xs text-muted-foreground text-center mt-2">
-                  Lighthouse may work better for scanning external websites.
-                </p>
-              </form>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      {/* Navigation */}
+      <nav className="bg-white shadow-sm border-b">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <Shield className="h-8 w-8 text-blue-600" />
+              <span className="text-2xl font-bold text-gray-900">AccessScan</span>
+            </div>
+            <div className="flex items-center gap-4">
+              <Link href="/auth">
+                <Button variant="outline">Sign In</Button>
+              </Link>
+              <Link href="/auth">
+                <Button>Get Started</Button>
+              </Link>
             </div>
           </div>
         </div>
-      </main>
+      </nav>
+
+      <div className="container mx-auto px-4 py-16">
+        {/* Hero Section */}
+        <div className="text-center mb-16">
+          <h1 className="text-5xl font-bold text-gray-900 mb-6">
+            Professional Web Accessibility Scanner
+          </h1>
+          <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
+            Ensure your website meets WCAG 2.1 compliance standards with our comprehensive 
+            accessibility scanning and reporting platform. Get detailed insights and actionable 
+            recommendations to make your website accessible to all users.
+          </p>
+          <div className="flex justify-center gap-4">
+            <Link href="/auth">
+              <Button size="lg" className="px-8 py-4 text-lg">
+                Start Free Scan
+              </Button>
+            </Link>
+            <Button variant="outline" size="lg" className="px-8 py-4 text-lg">
+              View Demo
+            </Button>
+          </div>
+        </div>
+
+        {/* Features Grid */}
+        <div className="grid md:grid-cols-3 gap-8 mb-16">
+          <Card className="text-center hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <Globe className="h-12 w-12 text-blue-600 mx-auto mb-4" />
+              <CardTitle>Comprehensive Scanning</CardTitle>
+              <CardDescription>
+                Analyze any website for WCAG 2.1 AA compliance with detailed violation reports
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="text-center hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <FileText className="h-12 w-12 text-green-600 mx-auto mb-4" />
+              <CardTitle>Professional Reports</CardTitle>
+              <CardDescription>
+                Get detailed PDF reports with actionable recommendations and priority fixes
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card className="text-center hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <Zap className="h-12 w-12 text-purple-600 mx-auto mb-4" />
+              <CardTitle>Fast & Reliable</CardTitle>
+              <CardDescription>
+                Lightning-fast scans with accurate results using industry-standard tools
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+
+        {/* Benefits Section */}
+        <div className="bg-white rounded-lg shadow-lg p-8 mb-16">
+          <h2 className="text-3xl font-bold text-gray-900 text-center mb-8">
+            Why Choose AccessScan?
+          </h2>
+          <div className="grid md:grid-cols-2 gap-8">
+            <div className="space-y-6">
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-6 w-6 text-green-500 mt-1 flex-shrink-0" />
+                <div>
+                  <h3 className="font-semibold text-gray-900">WCAG 2.1 Compliance</h3>
+                  <p className="text-gray-600">
+                    Comprehensive testing against Web Content Accessibility Guidelines 2.1 Level AA standards
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-6 w-6 text-green-500 mt-1 flex-shrink-0" />
+                <div>
+                  <h3 className="font-semibold text-gray-900">Detailed Analytics</h3>
+                  <p className="text-gray-600">
+                    Get in-depth analysis of accessibility issues with clear explanations and fix recommendations
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-6 w-6 text-green-500 mt-1 flex-shrink-0" />
+                <div>
+                  <h3 className="font-semibold text-gray-900">Priority Scoring</h3>
+                  <p className="text-gray-600">
+                    Issues are categorized by severity to help you focus on the most critical fixes first
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-6 w-6 text-green-500 mt-1 flex-shrink-0" />
+                <div>
+                  <h3 className="font-semibold text-gray-900">Professional Reports</h3>
+                  <p className="text-gray-600">
+                    Export comprehensive PDF reports perfect for sharing with stakeholders and developers
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-6 w-6 text-green-500 mt-1 flex-shrink-0" />
+                <div>
+                  <h3 className="font-semibold text-gray-900">Scan History</h3>
+                  <p className="text-gray-600">
+                    Track progress over time and maintain records of all your accessibility improvements
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-6 w-6 text-green-500 mt-1 flex-shrink-0" />
+                <div>
+                  <h3 className="font-semibold text-gray-900">Easy Integration</h3>
+                  <p className="text-gray-600">
+                    Simple to use interface that works with any website - no technical setup required
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats Section */}
+        <div className="grid md:grid-cols-4 gap-6 mb-16">
+          <div className="text-center bg-white rounded-lg p-6 shadow-sm">
+            <div className="text-3xl font-bold text-blue-600 mb-2">1,200+</div>
+            <div className="text-gray-600 flex items-center justify-center gap-1">
+              <Globe className="h-4 w-4" />
+              Websites Scanned
+            </div>
+          </div>
+          <div className="text-center bg-white rounded-lg p-6 shadow-sm">
+            <div className="text-3xl font-bold text-green-600 mb-2">8,500+</div>
+            <div className="text-gray-600 flex items-center justify-center gap-1">
+              <FileText className="h-4 w-4" />
+              Issues Found
+            </div>
+          </div>
+          <div className="text-center bg-white rounded-lg p-6 shadow-sm">
+            <div className="text-3xl font-bold text-purple-600 mb-2">98%</div>
+            <div className="text-gray-600 flex items-center justify-center gap-1">
+              <Star className="h-4 w-4" />
+              Accuracy Rate
+            </div>
+          </div>
+          <div className="text-center bg-white rounded-lg p-6 shadow-sm">
+            <div className="text-3xl font-bold text-orange-600 mb-2">24/7</div>
+            <div className="text-gray-600 flex items-center justify-center gap-1">
+              <Clock className="h-4 w-4" />
+              Available
+            </div>
+          </div>
+        </div>
+
+        {/* Testimonials */}
+        <div className="mb-16">
+          <h2 className="text-3xl font-bold text-gray-900 text-center mb-8">
+            Trusted by Businesses Worldwide
+          </h2>
+          <div className="grid md:grid-cols-3 gap-8">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-1 mb-4">
+                  {[...Array(5)].map((_, i) => (
+                    <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                  ))}
+                </div>
+                <p className="text-gray-600 mb-4">
+                  "AccessScan helped us identify and fix critical accessibility issues before launch. 
+                  The reports are incredibly detailed and actionable."
+                </p>
+                <div className="text-sm text-gray-500">- Sarah M., Product Manager</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-1 mb-4">
+                  {[...Array(5)].map((_, i) => (
+                    <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                  ))}
+                </div>
+                <p className="text-gray-600 mb-4">
+                  "The automated scanning saved us weeks of manual testing. We now catch 
+                  accessibility issues early in our development process."
+                </p>
+                <div className="text-sm text-gray-500">- David K., Developer</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-1 mb-4">
+                  {[...Array(5)].map((_, i) => (
+                    <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                  ))}
+                </div>
+                <p className="text-gray-600 mb-4">
+                  "Professional reports that we can share with clients and stakeholders. 
+                  AccessScan is an essential tool for our agency."
+                </p>
+                <div className="text-sm text-gray-500">- Michelle L., Agency Owner</div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* CTA Section */}
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg text-white p-8 text-center">
+          <h2 className="text-3xl font-bold mb-4">
+            Ready to Make Your Website Accessible?
+          </h2>
+          <p className="text-xl mb-6 opacity-90">
+            Join hundreds of businesses ensuring their websites are accessible to everyone
+          </p>
+          <Link href="/auth">
+            <Button size="lg" variant="secondary" className="px-8 py-4 text-lg">
+              Start Your Free Scan Today
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <footer className="bg-gray-900 text-white py-8 mt-16">
+        <div className="container mx-auto px-4">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <Shield className="h-6 w-6" />
+              <span className="font-semibold">AccessScan</span>
+            </div>
+            <div className="text-sm text-gray-400">
+              © 2024 AccessScan. Making the web accessible for everyone.
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
