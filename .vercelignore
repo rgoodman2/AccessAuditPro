@@ -1,0 +1,14 @@
+node_modules
+.env*
+.git
+reports/
+attached_assets/
+*.log
+.DS_Store
+*.tsbuildinfo
+coverage/
+.nyc_output/
+replit.nix
+.replit
+Dockerfile
+migrate.js
