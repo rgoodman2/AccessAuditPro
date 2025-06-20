@@ -12,6 +12,11 @@ import express from "express";
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
 
+  // Health check endpoint for Railway
+  app.get("/health", (req, res) => {
+    res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
   // Serve test pages and generated reports
   app.use("/test-pages", express.static(path.join(process.cwd(), "server/test-pages")));
   app.use("/reports", express.static(path.join(process.cwd(), "reports")));
