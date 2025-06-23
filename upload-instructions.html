@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GitHub Upload Helper</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .step { background: #f5f5f5; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .code { background: #f0f0f0; padding: 10px; border-radius: 3px; font-family: monospace; }
+        .important { background: #fff3cd; border: 1px solid #ffeaa7; }
+    </style>
+</head>
+<body>
+    <h1>Upload AccessAuditPro to GitHub</h1>
+    
+    <div class="step important">
+        <h3>Problem: Railway is deploying from wrong repository</h3>
+        <p>Railway is connected to "AcessibleScan" but your working code is in "AccessAuditPro" workspace.</p>
+    </div>
+
+    <div class="step">
+        <h3>Step 1: Download Working Files</h3>
+        <p>Download <code>AccessAuditPro-complete.tar.gz</code> from this Replit workspace</p>
+        <p>This contains all working files from your successful application</p>
+    </div>
+
+    <div class="step">
+        <h3>Step 2: Upload to GitHub</h3>
+        <p>1. Go to: <a href="https://github.com/rgoodman2/AccessAuditPro" target="_blank">https://github.com/rgoodman2/AccessAuditPro</a></p>
+        <p>2. Click "uploading an existing file" or "Add file" → "Upload files"</p>
+        <p>3. Extract the tar.gz and drag all files/folders to GitHub</p>
+        <p>4. Commit with message: "Upload working AccessAuditPro application"</p>
+    </div>
+
+    <div class="step">
+        <h3>Step 3: Fix Railway Connection</h3>
+        <p>1. Go to Railway dashboard</p>
+        <p>2. In project settings, change source repository from "AcessibleScan" to "AccessAuditPro"</p>
+        <p>3. Trigger new deployment</p>
+    </div>
+
+    <div class="step">
+        <h3>Why This Will Work</h3>
+        <p>Your server runs perfectly in this workspace on port 5000. The exact same code will work on Railway once it deploys from the correct repository.</p>
+    </div>
+
+    <h3>Key Files Included:</h3>
+    <div class="code">
+        package.json (Railway build commands)
+        railway.json (deployment config)
+        client/ (React frontend)
+        server/ (Express backend)
+        shared/ (TypeScript schemas)
+        All config files (vite, tailwind, etc.)
+    </div>
+</body>
+</html>

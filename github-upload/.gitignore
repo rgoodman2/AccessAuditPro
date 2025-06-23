@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.env.local
+.cache/
+reports/*.pdf
+*.log
+.DS_Store

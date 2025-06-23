@@ -1,0 +1,5 @@
+# Build artifacts
+*.tar.gz
+
+# Replit chat screenshots & attachments
+attached_assets/
