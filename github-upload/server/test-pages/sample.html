@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accessibility Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        header {
+            background-color: #f4f4f4;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        /* Some accessibility issues on purpose */
+        .low-contrast {
+            color: #aaaaaa;
+            background-color: #f0f0f0;
+        }
+        .small-text {
+            font-size: 9px;
+        }
+        img {
+            /* Missing alt text will be added in the img tag */
+        }
+        .skip-link {
+            position: absolute;
+            top: -40px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Missing skip link -->
+    <div class="container">
+        <header>
+            <h1>Accessibility Test Page</h1>
+            <p>This page contains deliberate accessibility issues for testing purposes.</p>
+        </header>
+        
+        <main>
+            <section>
+                <h2>Missing Alternative Text</h2>
+                <img src="https://via.placeholder.com/300x150" width="300" height="150">
+                
+                <h2>Low Contrast Text</h2>
+                <p class="low-contrast">This text has low contrast and may be difficult to read for some users.</p>
+                
+                <h2>Small Text</h2>
+                <p class="small-text">This text is too small to be readable by many users.</p>
+                
+                <h2>Missing Form Labels</h2>
+                <form>
+                    <div>
+                        <!-- Missing label -->
+                        <input type="text" placeholder="Your name">
+                    </div>
+                    <div>
+                        <!-- Missing label -->
+                        <input type="email" placeholder="Your email">
+                    </div>
+                    <button type="submit">Submit</button>
+                </form>
+                
+                <h2>Missing Heading Structure</h2>
+                <h4>This is an h4 directly after an h2, skipping h3</h4>
+                
+                <h2>Proper Heading Structure</h2>
+                <h3>This is a proper h3 after an h2</h3>
+                
+                <h2>Missing Table Headers</h2>
+                <table border="1">
+                    <tr>
+                        <td>Product</td>
+                        <td>Price</td>
+                        <td>Quantity</td>
+                    </tr>
+                    <tr>
+                        <td>Item 1</td>
+                        <td>$10.99</td>
+                        <td>5</td>
+                    </tr>
+                    <tr>
+                        <td>Item 2</td>
+                        <td>$24.99</td>
+                        <td>2</td>
+                    </tr>
+                </table>
+            </section>
+            
+            <section>
+                <h2>ARIA Best Practices</h2>
+                
+                <div role="button" tabindex="0">
+                    This div has a button role but no keyboard handler
+                </div>
+                
+                <h2>Semantic HTML</h2>
+                <p>The following content uses semantic HTML properly:</p>
+                <article>
+                    <h3>Article Title</h3>
+                    <p>This is an article with proper semantic markup.</p>
+                </article>
+            </section>
+        </main>
+        
+        <footer>
+            <p>&copy; 2023 Accessibility Test Page</p>
+        </footer>
+    </div>
+</body>
+</html>
