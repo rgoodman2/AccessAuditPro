@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Pages for Accessibility Scanner</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #444;
+            margin-top: 30px;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #4285f4;
+            color: white;
+            padding: 10px 15px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .btn:hover {
+            background-color: #3367d6;
+        }
+        code {
+            background-color: #f5f5f5;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .note {
+            background-color: #fffde7;
+            padding: 15px;
+            border-left: 4px solid #ffeb3b;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Accessibility Scanner Test Pages</h1>
+    
+    <div class="note">
+        <strong>Note:</strong> These pages are for testing the accessibility scanner in environments with limited network access. 
+        They provide sample HTML content with intentional accessibility issues for testing purposes.
+    </div>
+    
+    <h2>Available Test Pages</h2>
+    <div class="container">
+        <h3>Sample Test Page (With Issues)</h3>
+        <p>This page contains deliberate accessibility issues for testing the scanner.</p>
+        <p><a href="sample.html" class="btn">View Test Page</a></p>
+        <p>To scan this page, enter <code>test-sample</code> or <code>test</code> in the URL field of the scanner.</p>
+    </div>
+    
+    <div class="container">
+        <h3>Accessible Test Page (Fewer Issues)</h3>
+        <p>This page follows accessibility best practices for comparison.</p>
+        <p><a href="accessible.html" class="btn">View Accessible Page</a></p>
+        <p>To scan this page, enter <code>test-accessible</code> in the URL field of the scanner.</p>
+    </div>
+    
+    <h2>How to Use Test Pages</h2>
+    <p>When using the accessibility scanner in the application:</p>
+    <ol>
+        <li>Enter <code>test-sample</code> or <code>test-accessible</code> in the URL field</li>
+        <li>Click "Scan" to run the accessibility check</li>
+        <li>The system will use the local test pages instead of attempting to connect to external websites</li>
+    </ol>
+    
+    <h2>Why Test Pages?</h2>
+    <p>These test pages are useful when:</p>
+    <ul>
+        <li>Network access is restricted in the deployment environment</li>
+        <li>External domain access is limited</li>
+        <li>You want to test the scanner functionality without internet connectivity</li>
+        <li>You want predictable and consistent test results</li>
+    </ul>
+</body>
+</html>
