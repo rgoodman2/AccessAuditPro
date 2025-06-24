@@ -13,7 +13,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
 
   // Health check endpoint for Railway
-  app.get("/", (req, res) => {
+  app.get("/health", (req, res) => {
     res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
