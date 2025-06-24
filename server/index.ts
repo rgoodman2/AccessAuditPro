@@ -74,6 +74,6 @@ app.use((req, res, next) => {
     });
   };
   
-  const port = 5000;
+  const port = parseInt(process.env.PORT || "5000");
   startServer(port);
 })();
