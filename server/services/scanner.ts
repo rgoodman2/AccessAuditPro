@@ -208,13 +208,15 @@ async function captureScreenshot(url: string): Promise<string | null> {
     // Check if we're in a production environment where we can launch a browser
     // In some environments, this might fail due to restrictions
     try {
-      // Try to detect if we're in a Replit environment with limitations
+      // Enable screenshots in production environments like Railway
       const isReplitDev = process.env.REPL_ID && !process.env.REPL_SLUG;
       
       if (isReplitDev) {
         console.log('Detected Replit development environment - skipping screenshot for compatibility');
         return null;
       }
+      
+      console.log('Production environment detected - enabling screenshot capture');
       
       // Use the environment variable for Chromium if available
       const launchOptions: any = { 
@@ -224,7 +226,10 @@ async function captureScreenshot(url: string): Promise<string | null> {
           '--disable-setuid-sandbox',
           '--disable-gpu',
           '--disable-dev-shm-usage',
-          '--single-process'
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor',
+          '--single-process',
+          '--no-zygote'
         ]
       };
       
@@ -521,13 +526,25 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
       // First make sure we have a valid scan result
       const scanResult = await scanResultPromise;
       
-      // We'll skip the screenshot functionality completely
-      // This is because Replit's environment often blocks headless browser functionality
-      console.log('Skipping screenshot capture, using enhanced text descriptions instead');
+      // Try to capture screenshot in production environments
+      let screenshot = null;
+      try {
+        console.log('Attempting to capture screenshot for report...');
+        screenshot = await captureScreenshot(url);
+        if (screenshot) {
+          console.log('Screenshot captured successfully');
+        } else {
+          console.log('Screenshot capture skipped or failed');
+        }
+      } catch (screenshotError) {
+        console.warn('Screenshot capture failed:', screenshotError.message);
+        // Continue without screenshot
+      }
       
-      // Return scan result with metadata about the scan
+      // Return scan result with screenshot if available
       return {
         ...scanResult,
+        screenshot: screenshot || undefined,
         scanDateTime: new Date().toISOString(),
         url: url
       };
@@ -657,7 +674,31 @@ export async function generateReport(url: string, results: ScanResult): Promise<
          });
     }
     
-    // Add page information section instead of screenshots
+    // Add screenshot if available
+    if (results.screenshot) {
+      try {
+        doc.moveDown(1);
+        doc.fontSize(14)
+           .fillColor('#000000')
+           .text('Website Screenshot', { align: 'left' });
+        
+        doc.moveDown(0.5);
+        
+        // Add screenshot to PDF
+        const screenshotBuffer = Buffer.from(results.screenshot, 'base64');
+        doc.image(screenshotBuffer, {
+          fit: [400, 300],
+          align: 'center'
+        });
+        
+        doc.moveDown(1);
+      } catch (screenshotError) {
+        console.warn('Failed to add screenshot to PDF:', screenshotError);
+        // Continue without screenshot
+      }
+    }
+
+    // Add page information section 
     doc.moveDown(1);
     doc.fontSize(14)
        .fillColor('#000000')
@@ -679,6 +720,12 @@ export async function generateReport(url: string, results: ScanResult): Promise<
     doc.fontSize(12)
        .fillColor('#333333')
        .text(`• Standards Tested: WCAG 2.1 A, AA, and Best Practices`, { align: 'left' });
+    
+    if (results.screenshot) {
+      doc.fontSize(12)
+         .fillColor('#333333')
+         .text(`• Screenshot: Captured during scan`, { align: 'left' });
+    }
     
     doc.moveDown(0.5);
     
