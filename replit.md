@@ -103,6 +103,13 @@ AccessScan is a professional web accessibility audit application that helps ensu
 3. Static asset serving from built frontend
 4. Database migration on deployment
 
+## Recent Changes
+- June 23, 2025: Successfully deployed to Railway after resolving:
+  - Added health check endpoint at root path for Railway monitoring
+  - Fixed start command in railway.json (removed NODE_ENV prefix)
+  - Updated port configuration to use Railway's assigned PORT
+  - Fixed environment detection for production static file serving
+
 ## Changelog
 - June 19, 2025. Initial setup
 
