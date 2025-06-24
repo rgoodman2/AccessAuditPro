@@ -104,6 +104,11 @@ AccessScan is a professional web accessibility audit application that helps ensu
 4. Database migration on deployment
 
 ## Recent Changes
+- June 24, 2025: Fixed database connection issues for Railway deployment:
+  - Replaced @neondatabase/serverless with standard pg client
+  - Updated Drizzle configuration from neon-serverless to node-postgres
+  - Removed WebSocket configuration causing 502 registration errors
+  - Added SSL configuration for production database connections
 - June 23, 2025: Successfully deployed to Railway after resolving:
   - Added health check endpoint at root path for Railway monitoring
   - Fixed start command in railway.json (removed NODE_ENV prefix)
