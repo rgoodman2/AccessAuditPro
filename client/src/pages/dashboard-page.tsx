@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDistanceToNow } from "date-fns";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, Globe, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { 
   Form, 
@@ -58,6 +58,99 @@ const reportSettingsSchema = z.object({
 });
 
 type ReportSettingsFormValues = z.infer<typeof reportSettingsSchema>;
+
+// Scan form schema
+const scanSchema = z.object({
+  url: z.string().min(1, 'URL is required').refine((url) => {
+    // Allow test URLs or proper URLs
+    if (['test', 'test-sample', 'test-accessible'].includes(url)) return true;
+    try {
+      new URL(url.startsWith('http') ? url : 'https://' + url);
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'Please enter a valid URL or use "test" for demo')
+});
+
+type ScanFormValues = z.infer<typeof scanSchema>;
+
+function NewScanForm() {
+  const { toast } = useToast();
+  
+  const form = useForm<ScanFormValues>({
+    resolver: zodResolver(scanSchema),
+    defaultValues: {
+      url: ''
+    }
+  });
+  
+  const scanMutation = useMutation({
+    mutationFn: async (data: ScanFormValues) => {
+      const response = await apiRequest('POST', '/api/scans', data);
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Scan started",
+        description: "Your accessibility scan is now in progress. Refresh to see updates.",
+      });
+      form.reset();
+      queryClient.invalidateQueries({ queryKey: ['/api/scans'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Scan failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const onSubmit = (data: ScanFormValues) => {
+    scanMutation.mutate(data);
+  };
+  
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <FormField
+          control={form.control}
+          name="url"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Website URL</FormLabel>
+              <FormControl>
+                <div className="flex gap-2">
+                  <Input 
+                    placeholder="Enter website URL or type 'test' for demo"
+                    {...field}
+                    disabled={scanMutation.isPending}
+                  />
+                  <Button 
+                    type="submit" 
+                    disabled={scanMutation.isPending}
+                    className="whitespace-nowrap"
+                  >
+                    {scanMutation.isPending && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    <Search className="w-4 h-4 mr-2" />
+                    Start Scan
+                  </Button>
+                </div>
+              </FormControl>
+              <FormDescription>
+                Enter any website URL to scan for accessibility issues. Use "test" to try a demo scan.
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </form>
+    </Form>
+  );
+}
 
 function ReportSettingsForm() {
   const { toast } = useToast();
@@ -255,6 +348,21 @@ export default function DashboardPage() {
       </header>
 
       <main className="container mx-auto px-4 py-8 grid gap-8">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5" />
+              New Accessibility Scan
+            </CardTitle>
+            <CardDescription>
+              Scan any website for WCAG 2.1 compliance and accessibility issues
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <NewScanForm />
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Scan History</CardTitle>
