@@ -110,6 +110,7 @@ AccessScan is a professional web accessibility audit application that helps ensu
   - Removed WebSocket configuration causing 502 registration errors
   - Added SSL configuration for production database connections
   - Fixed "users" table constraint issue by adding missing username unique constraint
+  - Added automatic database migration script for Railway deployment
 - June 23, 2025: Successfully deployed to Railway after resolving:
   - Added health check endpoint at root path for Railway monitoring
   - Fixed start command in railway.json (removed NODE_ENV prefix)
