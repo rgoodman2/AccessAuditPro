@@ -87,7 +87,8 @@ interface ScanResult {
   violations: any[];
   passes: any[];
   incomplete: any[];
-  screenshot?: string; // Base64 encoded screenshot (deprecated)
+  screenshot?: string; // Base64 encoded screenshot 
+  violationScreenshots?: { [key: string]: string }; // Violation-specific screenshots
   error?: string;      // Error message if scan failed
   scanDateTime?: string; // ISO timestamp of when scan was performed
   url?: string;        // URL that was scanned
@@ -198,6 +199,145 @@ export async function generateBasicReport(url: string): Promise<string> {
 
 // Get the test page content
 const TEST_PAGE = fs.readFileSync(path.join(process.cwd(), 'server/test-pages/index.html'), 'utf8');
+
+// Function to capture issue-specific screenshots with element highlighting
+async function captureViolationScreenshots(url: string, violations: any[]): Promise<{ [violationId: string]: string }> {
+  if (!violations || violations.length === 0) return {};
+  
+  let browser = null;
+  const screenshots: { [violationId: string]: string } = {};
+  
+  try {
+    console.log('Launching browser for violation screenshots...');
+    
+    const isReplitDev = process.env.REPL_ID && !process.env.REPL_SLUG;
+    if (isReplitDev) {
+      console.log('Detected Replit development environment - skipping violation screenshots');
+      return {};
+    }
+    
+    const launchOptions: any = { 
+      headless: true,
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--single-process',
+        '--no-zygote'
+      ]
+    };
+    
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+    
+    browser = await puppeteer.launch(launchOptions);
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
+    page.setDefaultNavigationTimeout(30000);
+    
+    await page.goto(url, { waitUntil: 'networkidle0', timeout: 20000 });
+    await new Promise<void>(resolve => setTimeout(resolve, 2000));
+    
+    // Process up to 5 violations to avoid too many screenshots
+    for (let i = 0; i < Math.min(violations.length, 5); i++) {
+      const violation = violations[i];
+      if (!violation.nodes || violation.nodes.length === 0) continue;
+      
+      try {
+        // Get the first node's selector
+        const firstNode = violation.nodes[0];
+        const selector = firstNode.target ? firstNode.target.join(' ') : null;
+        
+        if (!selector) continue;
+        
+        // Try to find and highlight the element
+        await page.evaluate((sel) => {
+          try {
+            const element = document.querySelector(sel);
+            if (element) {
+              // Add a red border to highlight the problematic element
+              element.style.outline = '3px solid #ef4444';
+              element.style.outlineOffset = '2px';
+              // Scroll element into view
+              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          } catch (e) {
+            console.log('Could not highlight element:', sel);
+          }
+        }, selector);
+        
+        // Wait for scroll to complete
+        await new Promise<void>(resolve => setTimeout(resolve, 1000));
+        
+        // Take screenshot of the specific area
+        const element = await page.$(selector).catch(() => null);
+        let screenshot;
+        
+        if (element) {
+          // Take screenshot of the element and surrounding area
+          const boundingBox = await element.boundingBox();
+          if (boundingBox) {
+            screenshot = await page.screenshot({
+              type: 'jpeg',
+              quality: 70,
+              clip: {
+                x: Math.max(0, boundingBox.x - 50),
+                y: Math.max(0, boundingBox.y - 50),
+                width: Math.min(400, boundingBox.width + 100),
+                height: Math.min(300, boundingBox.height + 100)
+              }
+            });
+          }
+        }
+        
+        if (!screenshot) {
+          // Fallback: take a viewport screenshot
+          screenshot = await page.screenshot({ 
+            type: 'jpeg',
+            quality: 70,
+            fullPage: false
+          });
+        }
+        
+        screenshots[`${violation.id}_${i}`] = Buffer.from(screenshot).toString('base64');
+        console.log(`Captured screenshot for violation: ${violation.help}`);
+        
+        // Remove highlighting
+        await page.evaluate((sel) => {
+          try {
+            const element = document.querySelector(sel);
+            if (element) {
+              element.style.outline = '';
+              element.style.outlineOffset = '';
+            }
+          } catch (e) {
+            // Ignore
+          }
+        }, selector);
+        
+      } catch (violationError) {
+        console.warn(`Failed to capture screenshot for violation ${i}:`, violationError.message);
+      }
+    }
+    
+  } catch (error) {
+    console.error('Error capturing violation screenshots:', error);
+  } finally {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeError) {
+        console.error('Error closing browser:', closeError);
+      }
+    }
+  }
+  
+  return screenshots;
+}
 
 // Function to capture screenshot using Puppeteer
 async function captureScreenshot(url: string): Promise<string | null> {
@@ -526,25 +666,36 @@ export async function scanWebsite(url: string): Promise<ScanResult> {
       // First make sure we have a valid scan result
       const scanResult = await scanResultPromise;
       
-      // Try to capture screenshot in production environments
+      // Try to capture screenshots in production environments
       let screenshot = null;
+      let violationScreenshots = {};
+      
       try {
-        console.log('Attempting to capture screenshot for report...');
+        console.log('Attempting to capture screenshots for report...');
+        
+        // Capture main page screenshot
         screenshot = await captureScreenshot(url);
         if (screenshot) {
-          console.log('Screenshot captured successfully');
-        } else {
-          console.log('Screenshot capture skipped or failed');
+          console.log('Main screenshot captured successfully');
         }
+        
+        // Capture violation-specific screenshots
+        if (scanResult.violations && scanResult.violations.length > 0) {
+          console.log(`Capturing violation screenshots for ${scanResult.violations.length} issues...`);
+          violationScreenshots = await captureViolationScreenshots(url, scanResult.violations);
+          console.log(`Captured ${Object.keys(violationScreenshots).length} violation screenshots`);
+        }
+        
       } catch (screenshotError) {
         console.warn('Screenshot capture failed:', screenshotError.message);
-        // Continue without screenshot
+        // Continue without screenshots
       }
       
-      // Return scan result with screenshot if available
+      // Return scan result with screenshots if available
       return {
         ...scanResult,
         screenshot: screenshot || undefined,
+        violationScreenshots: violationScreenshots,
         scanDateTime: new Date().toISOString(),
         url: url
       };
@@ -877,13 +1028,34 @@ export async function generateReport(url: string, results: ScanResult): Promise<
         
         // WCAG reference
         const wcagCriteria = violation.tags
-          .filter(tag => tag.startsWith('wcag'))
-          .map(tag => tag.toUpperCase())
+          .filter((tag: any) => tag.startsWith('wcag'))
+          .map((tag: any) => tag.toUpperCase())
           .join(', ');
         
         doc.fontSize(12)
            .fillColor('#4B5563')
            .text(`WCAG Criteria: ${wcagCriteria || 'Not specified'}`);
+        
+        // Add violation screenshot if available
+        const violationKey = `${violation.id}_${index}`;
+        if (results.violationScreenshots && results.violationScreenshots[violationKey]) {
+          try {
+            doc.moveDown(0.5);
+            doc.fontSize(12)
+               .fillColor('#000000')
+               .text('Visual Evidence:');
+            
+            doc.moveDown(0.3);
+            const screenshotBuffer = Buffer.from(results.violationScreenshots[violationKey], 'base64');
+            doc.image(screenshotBuffer, {
+              fit: [200, 150]
+            });
+            
+            doc.moveDown(0.5);
+          } catch (screenshotError) {
+            console.warn('Failed to add violation screenshot to PDF:', screenshotError);
+          }
+        }
         
         // Problem description
         doc.moveDown(0.5);
@@ -913,7 +1085,7 @@ export async function generateReport(url: string, results: ScanResult): Promise<
              .text('Location Details:');
           
           // Loop through up to 3 examples with detailed location information
-          violation.nodes.slice(0, 3).forEach((node, nodeIndex) => {
+          violation.nodes.slice(0, 3).forEach((node: any, nodeIndex: number) => {
             doc.moveDown(0.25);
             
             // Extract location information - selector path shows where in the DOM
