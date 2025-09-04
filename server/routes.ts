@@ -6,8 +6,11 @@ import { insertScanSchema, reportSettingsSchema } from "@shared/schema";
 import { z } from "zod";
 import { scanWebsite, generateReport, generateBasicReport } from "./services/scanner";
 import { runLighthouseScan, generateLighthouseReport } from "./services/lighthouse-cli";
+import { sanitizeTarget } from "./services/url-sanitizer";
 import path from "path";
 import express from "express";
+import { v4 as uuidv4 } from "uuid";
+import { generateLimitedReport } from "./services/free-scanner";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
@@ -17,9 +20,144 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // Serve test pages and generated reports
+  // Serve test pages
   app.use("/test-pages", express.static(path.join(process.cwd(), "server/test-pages")));
-  app.use("/reports", express.static(path.join(process.cwd(), "reports")));
+
+  // Free scan test page
+  app.get("/free-scan", (req, res) => {
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Free Accessibility Scan</title>
+        <style>
+          body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+          .form-group { margin-bottom: 20px; }
+          label { display: block; margin-bottom: 5px; font-weight: bold; }
+          input[type="email"], input[type="url"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+          button { background-color: #FF6B6B; color: white; padding: 12px 30px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+          button:hover { background-color: #FF5252; }
+          .result { margin-top: 20px; padding: 15px; border-radius: 4px; }
+          .success { background-color: #E8F5E8; border: 1px solid #4CAF50; color: #2E7D32; }
+          .error { background-color: #FFEBEE; border: 1px solid #F44336; color: #C62828; }
+          .loading { background-color: #FFF3E0; border: 1px solid #FF9800; color: #F57C00; }
+        </style>
+      </head>
+      <body>
+        <h1>Free Accessibility Scan</h1>
+        <p>Get a preview of your website's accessibility issues. We'll show you the top 2 most critical problems found.</p>
+        
+        <form id="scanForm">
+          <div class="form-group">
+            <label for="email">Your Email Address</label>
+            <input type="email" id="email" name="email" required placeholder="you@example.com">
+          </div>
+          
+          <div class="form-group">
+            <label for="url">Website URL to Scan</label>
+            <input type="url" id="url" name="domainOrUrl" required placeholder="https://example.com">
+          </div>
+          
+          <button type="submit">Start Free Scan</button>
+        </form>
+        
+        <div id="result"></div>
+        
+        <script>
+          document.getElementById('scanForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const resultDiv = document.getElementById('result');
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData);
+            
+            // Show loading state
+            resultDiv.innerHTML = '<div class="result loading">Starting your scan... This may take up to 2 minutes.</div>';
+            
+            try {
+              const response = await fetch('/api/scan/free', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+              });
+              
+              const result = await response.json();
+              
+              if (response.ok) {
+                resultDiv.innerHTML = '<div class="result success">Scan started successfully! Scan ID: ' + result.scanId + '. Check your email and server logs for the report.</div>';
+              } else {
+                resultDiv.innerHTML = '<div class="result error">Error: ' + (result.error || 'Unknown error occurred') + '</div>';
+              }
+            } catch (error) {
+              resultDiv.innerHTML = '<div class="result error">Network error: ' + error.message + '</div>';
+            }
+          });
+        </script>
+      </body>
+      </html>
+    `);
+  });
+
+  // Free scan endpoint for lead generation
+  app.post("/api/scan/free", async (req, res) => {
+    try {
+      // Input validation schema
+      const freeScanSchema = z.object({
+        email: z.string().email("Valid email is required"),
+        domainOrUrl: z.string().min(1, "URL is required")
+      });
+      
+      const { email, domainOrUrl } = freeScanSchema.parse(req.body);
+      
+      // Sanitize and validate URL
+      const sanitizedTarget = await sanitizeTarget(domainOrUrl);
+      console.log(`Free scan request: ${email} -> ${sanitizedTarget.href}`);
+      
+      // Generate unique scan ID
+      const scanId = uuidv4();
+      
+      // Start async scan process
+      res.status(200).json({ message: "Scan started", scanId });
+      
+      // Process scan asynchronously
+      (async () => {
+        try {
+          console.log(`Starting free scan for ${sanitizedTarget.href}`);
+          
+          // Import the free scanner dynamically to avoid circular dependencies
+          const { scanSinglePageForFree, generateLimitedReport } = await import("./services/free-scanner");
+          
+          // Perform the scan
+          const scanResult = await scanSinglePageForFree(sanitizedTarget.href);
+          
+          // Generate limited PDF report
+          const reportPath = await generateLimitedReport(scanResult, scanId);
+          const reportUrl = `/reports/${path.basename(reportPath)}`;
+          
+          console.log(`Free scan completed for ${email}: ${reportUrl}`);
+          
+          // TODO: Send email with report link and CTA
+          // For now, we'll just log it
+          console.log(`Email would be sent to ${email} with report: ${reportUrl}`);
+          
+        } catch (error) {
+          console.error(`Free scan failed for ${email}:`, error);
+        }
+      })().catch(err => {
+        console.error("Unhandled error in free scan:", err);
+      });
+      
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: "Invalid input", details: error.errors });
+      } else {
+        console.error("Free scan endpoint error:", error);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    }
+  });
 
   app.post("/api/scans", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
@@ -66,7 +204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   { id: 'html-lang', description: 'HTML element must have a lang attribute', impact: 'serious', nodes: [{html: '<html lang="en">'}] }
                 ],
                 incomplete: [],
-                error: null
+                error: undefined
               };
             } else {
               // For external sites, continue with an error report instead of failing

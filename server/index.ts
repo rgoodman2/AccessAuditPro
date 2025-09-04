@@ -1,10 +1,16 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import fs from "fs";
+import path from "path";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Ensure reports folder exists and serve it statically
+fs.mkdirSync(path.resolve(process.cwd(), 'reports'), { recursive: true });
+app.use('/reports', express.static(path.resolve(process.cwd(), 'reports')));
 
 app.use((req, res, next) => {
   const start = Date.now();
