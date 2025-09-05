@@ -263,13 +263,18 @@ async function toPngBuffer(input?: string | Buffer | null, context = 'image') {
   let type: { ext: string; mime: string } | null = null;
   try {
     const imageType = (await import("image-type")).default;
-    type = imageType(buf);
-    console.log(`[DEBUG] image-type package result for ${context}: ${JSON.stringify(type)}`);
+    const result = imageType(buf);
+    console.log(`[DEBUG] image-type package result for ${context}: ${JSON.stringify(result)}`);
+    
+    // Check if result is valid (not null, not empty object, has required properties)
+    if (result && result.ext && result.mime) {
+      type = result;
+    }
   } catch (error) {
     console.log(`[DEBUG] image-type package failed for ${context}: ${error.message}`);
   }
 
-  // Fallback to manual detection if package failed
+  // Fallback to manual detection if package failed or returned invalid result
   if (!type) {
     console.log(`[DEBUG] Using fallback detection for ${context}`);
     type = detectImageType(buf);
