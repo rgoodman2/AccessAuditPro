@@ -120,7 +120,8 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
     
     // Always capture a full-page screenshot
     console.log('Taking full page screenshot...');
-    const fullB64 = (await page.screenshot({ fullPage: true })).toString('base64');
+    const fullBuf = await page.screenshot({ fullPage: true, type: 'png' }); // force PNG
+    const fullB64 = fullBuf.toString('base64');
     
     // Take per-violation element screenshots
     const shots = [];
@@ -131,22 +132,19 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
         try {
           const handle = await page.$(sel);
           let elB64: string | null = null;
-
           if (handle) {
-            const box = await handle.boundingBox(); // null or 0x0 => not visible (e.g., <meta>)
+            const box = await handle.boundingBox();
             if (box && box.width > 2 && box.height > 2) {
               await page.evaluate(s => {
                 const el = document.querySelector(s);
                 if (el instanceof HTMLElement) {
                   el.style.outline = '3px solid #ef4444';
                   el.style.outlineOffset = '2px';
-                  el.scrollIntoView({ block: 'center', inline: 'center' });
+                  el.scrollIntoView({ block:'center', inline:'center' });
                 }
               }, sel);
-              const buf = await handle.screenshot({ captureBeyondViewport: false });
-              elB64 = buf.toString('base64');
-            } else {
-              console.warn('skip element screenshot (non-visual)', sel);
+              const elBuf = await handle.screenshot({ type: 'png', captureBeyondViewport: false });
+              elB64 = elBuf.toString('base64');
             }
           }
 
@@ -195,10 +193,11 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
 }
 
 
-// Helper function to convert base64 to Buffer for PDFKit
-function b64ToBuffer(b64orUri: string) {
-  if (!b64orUri) return null as any;
-  const b64 = b64orUri.replace(/^data:image\/\w+;base64,/, '');
+function toPngBuffer(input?: string | Buffer | null) {
+  if (!input) return null;
+  if (Buffer.isBuffer(input)) return input;
+  // strip data: prefix if present, then decode
+  const b64 = input.replace(/^data:image\/\w+;base64,/, '');
   return Buffer.from(b64, 'base64');
 }
 
@@ -349,8 +348,8 @@ export async function generateLimitedReport(
          .fillColor('#333333')
          .text('Website Screenshot', 50, 50);
       
-      const buf = b64ToBuffer(scanResult.fullB64);
-      if (buf) doc.image(buf, 50, 80, { width: 520 });
+      const fullBuf = toPngBuffer(scanResult.fullB64);
+      if (fullBuf) doc.image(fullBuf, 50, 80, { width: 520 });
     } catch (imageError) {
       console.warn('Could not add full page screenshot to PDF:', imageError);
     }
@@ -381,7 +380,7 @@ export async function generateLimitedReport(
           
           yPos += 20;
           
-          const buf = b64ToBuffer(s.b64);
+          const buf = toPngBuffer(s.b64);
           if (buf) doc.image(buf, 50, yPos, { width: 520 });
           
           yPos += 220;
