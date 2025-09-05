@@ -836,7 +836,12 @@ export async function generateReport(url: string, results: ScanResult): Promise<
         doc.moveDown(0.5);
         
         // Add screenshot to PDF
-        const screenshotBuffer = Buffer.from(results.screenshot, 'base64');
+        let screenshotData = results.screenshot;
+        if (screenshotData.startsWith('data:image/')) {
+          const commaIndex = screenshotData.indexOf(',');
+          screenshotData = commaIndex !== -1 ? screenshotData.substring(commaIndex + 1) : screenshotData;
+        }
+        const screenshotBuffer = Buffer.from(screenshotData, 'base64');
         doc.image(screenshotBuffer, {
           fit: [400, 300],
           align: 'center'
