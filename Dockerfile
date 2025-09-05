@@ -36,8 +36,8 @@ RUN npm install
 # Copy all files
 COPY . .
 
-# Build the application
-RUN npm run build
+# Build the application (force clean)
+RUN rm -rf dist && npm run build
 
 # Create reports directory
 RUN mkdir -p reports && chmod 755 reports
