@@ -161,7 +161,8 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
     // Always capture a full-page screenshot
     console.log('Taking full page screenshot...');
     const fullBuf = await page.screenshot({ fullPage: true, type: 'png' }); // force PNG
-    const fullB64 = `data:image/png;base64,${fullBuf.toString('base64')}`;
+    console.log(`[DEBUG] Full screenshot buffer length: ${fullBuf.length}, first 16 bytes: ${Array.from(fullBuf.slice(0, 16)).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' ')}`);
+    const fullB64 = fullBuf; // Store as Buffer directly instead of base64
     
     // Take per-violation element screenshots
     const shots = [];
@@ -184,7 +185,8 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
                 }
               }, sel);
               const elBuf = await handle.screenshot({ type: 'png', captureBeyondViewport: false });
-              elB64 = `data:image/png;base64,${elBuf.toString('base64')}`;
+              console.log(`[DEBUG] Element screenshot buffer length: ${elBuf.length}, first 16 bytes: ${Array.from(elBuf.slice(0, 16)).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' ')}`);
+              elB64 = elBuf; // Store as Buffer directly instead of base64
             }
           }
 
@@ -237,14 +239,17 @@ async function toPngBuffer(input?: string | Buffer | null, context = 'image') {
   console.log(`[DEBUG] toPngBuffer called for ${context}, input type: ${typeof input}, length: ${input?.length || 'null'}`);
   
   if (!input) return null;
-  const buf = Buffer.isBuffer(input)
-    ? input
-    : (() => {
-        const b64 = input.replace(/^data:image\/\w+;base64,/, '');
-        console.log(`[DEBUG] ${context}: processing base64 string, original length: ${input.length}, cleaned length: ${b64.length}`);
-        return Buffer.from(b64, 'base64');
-      })();
-
+  
+  // If it's already a Buffer, use it directly
+  if (Buffer.isBuffer(input)) {
+    console.log(`[DEBUG] ${context}: using Buffer directly, length: ${input.length}`);
+    return input;
+  }
+  
+  // Otherwise process as base64 string
+  const b64 = input.replace(/^data:image\/\w+;base64,/, '');
+  console.log(`[DEBUG] ${context}: processing base64 string, original length: ${input.length}, cleaned length: ${b64.length}`);
+  const buf = Buffer.from(b64, 'base64');
   console.log(`[DEBUG] ${context}: final buffer length: ${buf.length}`);
 
   if (buf.length === 0) {
