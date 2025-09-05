@@ -118,46 +118,44 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
     // Take exactly 2 violations (enforce the "2 issues" promise)
     const selected = sortedViolations.slice(0, 2);
     
-    // Take full page screenshot
+    // Always capture a full-page screenshot
     console.log('Taking full page screenshot...');
-    const fullPageBuffer = await page.screenshot({
-      fullPage: true,
-      type: 'png'
-    });
-    const fullB64 = fullPageBuffer.toString('base64');
+    const fullB64 = (await page.screenshot({ fullPage: true })).toString('base64');
     
     // Take per-violation element screenshots
     const shots = [];
-    let elementShotsCount = 0;
     
     for (const violation of selected) {
-      const selector = violation.nodes?.[0]?.target?.[0];
-      if (selector) {
+      const sel = violation.nodes?.[0]?.target?.[0];
+      if (sel) {
         try {
-          // Outline and center the element
-          await page.evaluate((sel) => {
-            const el = document.querySelector(sel) as HTMLElement | null;
-            if (el) { 
-              el.style.outline = '3px solid #ef4444'; 
-              el.scrollIntoView({block:'center'}); 
+          const handle = await page.$(sel);
+          let elB64: string | null = null;
+
+          if (handle) {
+            const box = await handle.boundingBox(); // null or 0x0 => not visible (e.g., <meta>)
+            if (box && box.width > 2 && box.height > 2) {
+              await page.evaluate(s => {
+                const el = document.querySelector(s);
+                if (el instanceof HTMLElement) {
+                  el.style.outline = '3px solid #ef4444';
+                  el.style.outlineOffset = '2px';
+                  el.scrollIntoView({ block: 'center', inline: 'center' });
+                }
+              }, sel);
+              const buf = await handle.screenshot({ captureBeyondViewport: false });
+              elB64 = buf.toString('base64');
+            } else {
+              console.warn('skip element screenshot (non-visual)', sel);
             }
-          }, selector);
-          
-          const element = await page.$(selector);
-          const elB64 = element ? (await element.screenshot()).toString('base64') : null;
-          
-          shots.push({
-            ruleId: violation.id,
-            sel: selector,
-            b64: elB64
-          });
-          
-          if (elB64) elementShotsCount++;
+          }
+
+          shots.push({ ruleId: violation.id, sel, b64: elB64 });
         } catch (error) {
           console.warn(`Could not capture screenshot for violation ${violation.id}:`, error);
           shots.push({
             ruleId: violation.id,
-            sel: selector,
+            sel,
             b64: null
           });
         }
@@ -165,7 +163,7 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
     }
     
     // Debug log per scan
-    console.log(`violations_found=${axeResults.violations.length} selected=${selected.length} element_shots=${elementShotsCount}`);
+    console.info(`violations_found=${axeResults.violations.length} selected=${selected.length} element_shots=${shots.filter(s=>!!s.b64).length}`);
     
     await browser.close();
     browser = null;
@@ -196,6 +194,13 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
   }
 }
 
+
+// Helper function to convert base64 to Buffer for PDFKit
+function b64ToBuffer(b64orUri: string) {
+  if (!b64orUri) return null as any;
+  const b64 = b64orUri.replace(/^data:image\/\w+;base64,/, '');
+  return Buffer.from(b64, 'base64');
+}
 
 export async function generateLimitedReport(
   scanResult: LimitedScanResult,
@@ -344,8 +349,8 @@ export async function generateLimitedReport(
          .fillColor('#333333')
          .text('Website Screenshot', 50, 50);
       
-      const imageBuffer = Buffer.from(scanResult.fullB64, 'base64');
-      doc.image(imageBuffer, 50, 80, { width: 500, fit: [500, 600] });
+      const buf = b64ToBuffer(scanResult.fullB64);
+      if (buf) doc.image(buf, 50, 80, { width: 520 });
     } catch (imageError) {
       console.warn('Could not add full page screenshot to PDF:', imageError);
     }
@@ -353,15 +358,17 @@ export async function generateLimitedReport(
   
   // Add violation element screenshots
   if (scanResult.shots && scanResult.shots.length > 0) {
-    doc.addPage();
-    doc.fontSize(16)
-       .fillColor('#333333')
-       .text('Violation Screenshots', 50, 50);
-    
-    let yPos = 80;
-    
-    scanResult.shots.forEach((shot, index) => {
-      if (shot.b64) {
+    const shotsWithImages = scanResult.shots.filter(s => s.b64);
+    if (shotsWithImages.length > 0) {
+      doc.addPage();
+      doc.fontSize(16)
+         .fillColor('#333333')
+         .text('Violation Screenshots', 50, 50);
+      
+      let yPos = 80;
+      
+      for (const s of shotsWithImages) {
+        if (!s.b64) continue;
         try {
           if (yPos > 600) {
             doc.addPage();
@@ -370,19 +377,19 @@ export async function generateLimitedReport(
           
           doc.fontSize(12)
              .fillColor('#555555')
-             .text(`Selector: ${shot.sel}`, 50, yPos);
+             .text(`Selector: ${s.sel}`, 50, yPos);
           
           yPos += 20;
           
-          const imageBuffer = Buffer.from(shot.b64, 'base64');
-          doc.image(imageBuffer, 50, yPos, { width: 400, fit: [400, 200] });
+          const buf = b64ToBuffer(s.b64);
+          if (buf) doc.image(buf, 50, yPos, { width: 520 });
           
           yPos += 220;
         } catch (imageError) {
-          console.warn(`Could not add violation screenshot ${shot.ruleId} to PDF:`, imageError);
+          console.warn(`Could not add violation screenshot ${s.ruleId} to PDF:`, imageError);
         }
       }
-    });
+    }
   }
   
   // Finalize the PDF
