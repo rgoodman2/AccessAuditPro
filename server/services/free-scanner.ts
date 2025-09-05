@@ -4,6 +4,32 @@ import PDFDocument from "pdfkit";
 import fs from "fs";
 import path from "path";
 import { mkdir } from "fs/promises";
+import os from "os";
+
+let imageType: (input: Buffer) => { ext: string; mime: string } | null;
+try {
+  imageType = (await import("image-type")).default;
+} catch {
+  imageType = (buffer: Buffer) => {
+    if (
+      buffer.length > 8 &&
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47 &&
+      buffer[4] === 0x0d &&
+      buffer[5] === 0x0a &&
+      buffer[6] === 0x1a &&
+      buffer[7] === 0x0a
+    ) {
+      return { ext: "png", mime: "image/png" };
+    }
+    if (buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+      return { ext: "jpg", mime: "image/jpeg" };
+    }
+    return null;
+  };
+}
 
 interface LimitedScanResult {
   violations: any[];
@@ -193,12 +219,41 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
 }
 
 
-function toPngBuffer(input?: string | Buffer | null) {
+function toPngBuffer(input?: string | Buffer | null, context = 'image') {
   if (!input) return null;
-  if (Buffer.isBuffer(input)) return input;
-  // strip data: prefix if present, then decode
-  const b64 = input.replace(/^data:image\/\w+;base64,/, '');
-  return Buffer.from(b64, 'base64');
+  const buf = Buffer.isBuffer(input)
+    ? input
+    : (() => {
+        const b64 = input.replace(/^data:image\/\w+;base64,/, '');
+        return Buffer.from(b64, 'base64');
+      })();
+
+  if (buf.length === 0) {
+    console.warn(`Skipping ${context}: decoded image buffer is empty`);
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const tmp = path.join(os.tmpdir(), `empty-image-${Date.now()}.png`);
+        fs.writeFileSync(tmp, buf);
+        console.warn(`Wrote empty image buffer to ${tmp}`);
+      } catch {}
+    }
+    return null;
+  }
+
+  const type = imageType(buf);
+  if (!type || (type.mime !== 'image/png' && type.mime !== 'image/jpeg')) {
+    console.warn(`Skipping ${context}: unsupported or unrecognized image type (${type?.mime || 'unknown'})`);
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const tmp = path.join(os.tmpdir(), `invalid-image-${Date.now()}`);
+        fs.writeFileSync(tmp, buf);
+        console.warn(`Wrote invalid image buffer to ${tmp}`);
+      } catch {}
+    }
+    return null;
+  }
+
+  return buf;
 }
 
 export async function generateLimitedReport(
@@ -348,7 +403,7 @@ export async function generateLimitedReport(
          .fillColor('#333333')
          .text('Website Screenshot', 50, 50);
       
-      const fullBuf = toPngBuffer(scanResult.fullB64);
+      const fullBuf = toPngBuffer(scanResult.fullB64, 'full page screenshot');
       if (fullBuf) doc.image(fullBuf, 50, 80, { width: 520 });
     } catch (imageError) {
       console.warn('Could not add full page screenshot to PDF:', imageError);
@@ -380,7 +435,7 @@ export async function generateLimitedReport(
           
           yPos += 20;
           
-          const buf = toPngBuffer(s.b64);
+          const buf = toPngBuffer(s.b64, `violation ${s.ruleId}`);
           if (buf) doc.image(buf, 50, yPos, { width: 520 });
           
           yPos += 220;
