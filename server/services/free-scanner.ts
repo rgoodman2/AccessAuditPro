@@ -235,71 +235,28 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
 }
 
 
-async function toPngBuffer(input?: string | Buffer | null, context = 'image') {
+async function toPngBuffer(input?: string | Buffer | null, context = 'image'): Promise<Buffer | null> {
   console.log(`[DEBUG] toPngBuffer called for ${context}, input type: ${typeof input}, length: ${input?.length || 'null'}`);
   
   if (!input) return null;
   
-  // If it's already a Buffer, use it directly
+  // If it's already a Buffer, use it directly (screenshots from Puppeteer)
   if (Buffer.isBuffer(input)) {
     console.log(`[DEBUG] ${context}: using Buffer directly, length: ${input.length}`);
     return input;
   }
   
-  // Otherwise process as base64 string
+  // Otherwise process as base64 string (legacy data)
   const b64 = input.replace(/^data:image\/\w+;base64,/, '');
   console.log(`[DEBUG] ${context}: processing base64 string, original length: ${input.length}, cleaned length: ${b64.length}`);
   const buf = Buffer.from(b64, 'base64');
   console.log(`[DEBUG] ${context}: final buffer length: ${buf.length}`);
 
-  return buf;
-
   if (buf.length === 0) {
     console.warn(`Skipping ${context}: decoded image buffer is empty`);
-    if (process.env.NODE_ENV !== 'production') {
-      try {
-        const tmp = path.join(os.tmpdir(), `empty-image-${Date.now()}.png`);
-        fs.writeFileSync(tmp, buf);
-        console.warn(`Wrote empty image buffer to ${tmp}`);
-      } catch {}
-    }
     return null;
   }
 
-  // Try using the image-type package first
-  let type: { ext: string; mime: string } | null = null;
-  try {
-    const imageType = (await import("image-type")).default;
-    const result = imageType(buf);
-    console.log(`[DEBUG] image-type package result for ${context}: ${JSON.stringify(result)}`);
-    
-    // Check if result is valid (not null, not empty object, has required properties)
-    if (result && result.ext && result.mime) {
-      type = result;
-    }
-  } catch (error) {
-    console.log(`[DEBUG] image-type package failed for ${context}: ${error.message}`);
-  }
-
-  // Fallback to manual detection if package failed or returned invalid result
-  if (!type) {
-    console.log(`[DEBUG] Using fallback detection for ${context}`);
-    type = detectImageType(buf);
-  }
-
-  if (!type || (type.mime !== 'image/png' && type.mime !== 'image/jpeg')) {
-    console.warn(`Skipping ${context}: unsupported or unrecognized image type (${type?.mime || 'unknown'})`);
-    if (process.env.NODE_ENV !== 'production') {
-      try {
-        const tmp = path.join(os.tmpdir(), `invalid-image-${Date.now()}`);
-        fs.writeFileSync(tmp, buf);
-        console.warn(`Wrote invalid image buffer to ${tmp}`);
-      } catch {}
-    }
-    return null;
-  }
-
-  console.log(`[DEBUG] ${context}: valid ${type.mime} detected`);
   return buf;
 }
 
