@@ -235,7 +235,7 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
 }
 
 
-function toPngBuffer(input?: string | Buffer | null, context = 'image'): Buffer | null {
+function processImageBuffer(input?: string | Buffer | null, context = 'image'): Buffer | null {
   if (!input) return null;
   
   // If it's already a Buffer, use it directly (screenshots from Puppeteer)
@@ -403,7 +403,7 @@ export async function generateLimitedReport(
          .fillColor('#333333')
          .text('Website Screenshot', 50, 50);
       
-      const fullBuf = toPngBuffer(scanResult.fullB64, 'full page screenshot');
+      const fullBuf = processImageBuffer(scanResult.fullB64, 'full page screenshot');
       if (fullBuf) doc.image(fullBuf, 50, 80, { width: 520 });
     } catch (imageError) {
       console.warn('Could not add full page screenshot to PDF:', imageError);
@@ -435,7 +435,7 @@ export async function generateLimitedReport(
           
           yPos += 20;
           
-          const buf = toPngBuffer(s.b64, `violation ${s.ruleId}`);
+          const buf = processImageBuffer(s.b64, `violation ${s.ruleId}`);
           if (buf) doc.image(buf, 50, yPos, { width: 520 });
           
           yPos += 220;
