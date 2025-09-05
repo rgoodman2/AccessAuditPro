@@ -6,29 +6,31 @@ import path from "path";
 import { mkdir } from "fs/promises";
 import os from "os";
 
-let imageType: (input: Buffer) => { ext: string; mime: string } | null;
-try {
-  imageType = (await import("image-type")).default;
-} catch {
-  imageType = (buffer: Buffer) => {
-    if (
-      buffer.length > 8 &&
-      buffer[0] === 0x89 &&
-      buffer[1] === 0x50 &&
-      buffer[2] === 0x4e &&
-      buffer[3] === 0x47 &&
-      buffer[4] === 0x0d &&
-      buffer[5] === 0x0a &&
-      buffer[6] === 0x1a &&
-      buffer[7] === 0x0a
-    ) {
-      return { ext: "png", mime: "image/png" };
-    }
-    if (buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8) {
-      return { ext: "jpg", mime: "image/jpeg" };
-    }
-    return null;
-  };
+// Simple PNG/JPEG format detection fallback
+function detectImageType(buffer: Buffer): { ext: string; mime: string } | null {
+  if (buffer.length === 0) return null;
+  
+  // PNG signature: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return { ext: "png", mime: "image/png" };
+  }
+  
+  // JPEG signature: FF D8
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+    return { ext: "jpg", mime: "image/jpeg" };
+  }
+  
+  return null;
 }
 
 interface LimitedScanResult {
@@ -240,7 +242,7 @@ function toPngBuffer(input?: string | Buffer | null, context = 'image') {
     return null;
   }
 
-  const type = imageType(buf);
+  const type = detectImageType(buf);
   if (!type || (type.mime !== 'image/png' && type.mime !== 'image/jpeg')) {
     console.warn(`Skipping ${context}: unsupported or unrecognized image type (${type?.mime || 'unknown'})`);
     if (process.env.NODE_ENV !== 'production') {
@@ -274,7 +276,6 @@ export async function generateLimitedReport(
   const doc = new PDFDocument({
     size: 'letter',
     margin: 50,
-    printBackground: true,
     info: {
       Title: `Limited Accessibility Preview - ${scanResult.url}`,
       Author: 'IncluShield',
