@@ -252,6 +252,8 @@ async function toPngBuffer(input?: string | Buffer | null, context = 'image') {
   const buf = Buffer.from(b64, 'base64');
   console.log(`[DEBUG] ${context}: final buffer length: ${buf.length}`);
 
+  return buf;
+
   if (buf.length === 0) {
     console.warn(`Skipping ${context}: decoded image buffer is empty`);
     if (process.env.NODE_ENV !== 'production') {
