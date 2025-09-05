@@ -8,7 +8,16 @@ import os from "os";
 
 // Simple PNG/JPEG format detection fallback
 function detectImageType(buffer: Buffer): { ext: string; mime: string } | null {
-  if (buffer.length === 0) return null;
+  console.log(`[DEBUG] detectImageType: buffer length=${buffer.length}`);
+  
+  if (buffer.length === 0) {
+    console.log(`[DEBUG] detectImageType: empty buffer`);
+    return null;
+  }
+  
+  // Log first 16 bytes for debugging
+  const firstBytes = Array.from(buffer.slice(0, 16)).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' ');
+  console.log(`[DEBUG] detectImageType: first 16 bytes: ${firstBytes}`);
   
   // PNG signature: 89 50 4E 47 0D 0A 1A 0A
   if (
@@ -22,14 +31,17 @@ function detectImageType(buffer: Buffer): { ext: string; mime: string } | null {
     buffer[6] === 0x1a &&
     buffer[7] === 0x0a
   ) {
+    console.log(`[DEBUG] detectImageType: detected PNG`);
     return { ext: "png", mime: "image/png" };
   }
   
   // JPEG signature: FF D8
   if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+    console.log(`[DEBUG] detectImageType: detected JPEG`);
     return { ext: "jpg", mime: "image/jpeg" };
   }
   
+  console.log(`[DEBUG] detectImageType: unknown format`);
   return null;
 }
 
@@ -221,14 +233,19 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
 }
 
 
-function toPngBuffer(input?: string | Buffer | null, context = 'image') {
+async function toPngBuffer(input?: string | Buffer | null, context = 'image') {
+  console.log(`[DEBUG] toPngBuffer called for ${context}, input type: ${typeof input}, length: ${input?.length || 'null'}`);
+  
   if (!input) return null;
   const buf = Buffer.isBuffer(input)
     ? input
     : (() => {
         const b64 = input.replace(/^data:image\/\w+;base64,/, '');
+        console.log(`[DEBUG] ${context}: processing base64 string, original length: ${input.length}, cleaned length: ${b64.length}`);
         return Buffer.from(b64, 'base64');
       })();
+
+  console.log(`[DEBUG] ${context}: final buffer length: ${buf.length}`);
 
   if (buf.length === 0) {
     console.warn(`Skipping ${context}: decoded image buffer is empty`);
@@ -242,7 +259,22 @@ function toPngBuffer(input?: string | Buffer | null, context = 'image') {
     return null;
   }
 
-  const type = detectImageType(buf);
+  // Try using the image-type package first
+  let type: { ext: string; mime: string } | null = null;
+  try {
+    const imageType = (await import("image-type")).default;
+    type = imageType(buf);
+    console.log(`[DEBUG] image-type package result for ${context}: ${JSON.stringify(type)}`);
+  } catch (error) {
+    console.log(`[DEBUG] image-type package failed for ${context}: ${error.message}`);
+  }
+
+  // Fallback to manual detection if package failed
+  if (!type) {
+    console.log(`[DEBUG] Using fallback detection for ${context}`);
+    type = detectImageType(buf);
+  }
+
   if (!type || (type.mime !== 'image/png' && type.mime !== 'image/jpeg')) {
     console.warn(`Skipping ${context}: unsupported or unrecognized image type (${type?.mime || 'unknown'})`);
     if (process.env.NODE_ENV !== 'production') {
@@ -255,6 +287,7 @@ function toPngBuffer(input?: string | Buffer | null, context = 'image') {
     return null;
   }
 
+  console.log(`[DEBUG] ${context}: valid ${type.mime} detected`);
   return buf;
 }
 
@@ -404,7 +437,7 @@ export async function generateLimitedReport(
          .fillColor('#333333')
          .text('Website Screenshot', 50, 50);
       
-      const fullBuf = toPngBuffer(scanResult.fullB64, 'full page screenshot');
+      const fullBuf = await toPngBuffer(scanResult.fullB64, 'full page screenshot');
       if (fullBuf) doc.image(fullBuf, 50, 80, { width: 520 });
     } catch (imageError) {
       console.warn('Could not add full page screenshot to PDF:', imageError);
@@ -436,7 +469,7 @@ export async function generateLimitedReport(
           
           yPos += 20;
           
-          const buf = toPngBuffer(s.b64, `violation ${s.ruleId}`);
+          const buf = await toPngBuffer(s.b64, `violation ${s.ruleId}`);
           if (buf) doc.image(buf, 50, yPos, { width: 520 });
           
           yPos += 220;
