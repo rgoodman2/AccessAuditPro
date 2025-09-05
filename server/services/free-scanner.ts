@@ -161,7 +161,7 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
     // Always capture a full-page screenshot
     console.log('Taking full page screenshot...');
     const fullBuf = await page.screenshot({ fullPage: true, type: 'png' }); // force PNG
-    const fullB64 = fullBuf.toString('base64');
+    const fullB64 = `data:image/png;base64,${fullBuf.toString('base64')}`;
     
     // Take per-violation element screenshots
     const shots = [];
@@ -184,7 +184,7 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
                 }
               }, sel);
               const elBuf = await handle.screenshot({ type: 'png', captureBeyondViewport: false });
-              elB64 = elBuf.toString('base64');
+              elB64 = `data:image/png;base64,${elBuf.toString('base64')}`;
             }
           }
 
