@@ -235,28 +235,25 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
 }
 
 
-async function toPngBuffer(input?: string | Buffer | null, context = 'image'): Promise<Buffer | null> {
-  console.log(`[DEBUG] toPngBuffer v2.0 called for ${context}, input type: ${typeof input}, length: ${input?.length || 'null'}`);
-  
+function toPngBuffer(input?: string | Buffer | null, context = 'image'): Buffer | null {
   if (!input) return null;
   
   // If it's already a Buffer, use it directly (screenshots from Puppeteer)
   if (Buffer.isBuffer(input)) {
-    console.log(`[DEBUG] ${context}: using Buffer directly v2.0, length: ${input.length}`);
+    console.log(`✓ Using screenshot Buffer directly for ${context}, ${input.length} bytes`);
     return input;
   }
   
   // Otherwise process as base64 string (legacy data)
   const b64 = input.replace(/^data:image\/\w+;base64,/, '');
-  console.log(`[DEBUG] ${context}: processing base64 string, original length: ${input.length}, cleaned length: ${b64.length}`);
   const buf = Buffer.from(b64, 'base64');
-  console.log(`[DEBUG] ${context}: final buffer length: ${buf.length}`);
-
+  
   if (buf.length === 0) {
-    console.warn(`Skipping ${context}: decoded image buffer is empty`);
+    console.warn(`Empty buffer for ${context}`);
     return null;
   }
 
+  console.log(`✓ Decoded base64 for ${context}, ${buf.length} bytes`);
   return buf;
 }
 
@@ -406,7 +403,7 @@ export async function generateLimitedReport(
          .fillColor('#333333')
          .text('Website Screenshot', 50, 50);
       
-      const fullBuf = await toPngBuffer(scanResult.fullB64, 'full page screenshot');
+      const fullBuf = toPngBuffer(scanResult.fullB64, 'full page screenshot');
       if (fullBuf) doc.image(fullBuf, 50, 80, { width: 520 });
     } catch (imageError) {
       console.warn('Could not add full page screenshot to PDF:', imageError);
@@ -438,7 +435,7 @@ export async function generateLimitedReport(
           
           yPos += 20;
           
-          const buf = await toPngBuffer(s.b64, `violation ${s.ruleId}`);
+          const buf = toPngBuffer(s.b64, `violation ${s.ruleId}`);
           if (buf) doc.image(buf, 50, yPos, { width: 520 });
           
           yPos += 220;
