@@ -236,13 +236,13 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
 
 
 async function toPngBuffer(input?: string | Buffer | null, context = 'image'): Promise<Buffer | null> {
-  console.log(`[DEBUG] toPngBuffer called for ${context}, input type: ${typeof input}, length: ${input?.length || 'null'}`);
+  console.log(`[DEBUG] toPngBuffer v2.0 called for ${context}, input type: ${typeof input}, length: ${input?.length || 'null'}`);
   
   if (!input) return null;
   
   // If it's already a Buffer, use it directly (screenshots from Puppeteer)
   if (Buffer.isBuffer(input)) {
-    console.log(`[DEBUG] ${context}: using Buffer directly, length: ${input.length}`);
+    console.log(`[DEBUG] ${context}: using Buffer directly v2.0, length: ${input.length}`);
     return input;
   }
   
