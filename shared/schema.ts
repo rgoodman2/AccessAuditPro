@@ -14,8 +14,8 @@ export const scans = pgTable("scans", {
   url: text("url").notNull(),
   status: text("status").notNull(), // pending, completed, failed
   reportUrl: text("report_url"),
+  screenshot: text("screenshot"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  // Screenshot is handled in the code, not in the database schema
 });
 
 // New table for report settings
@@ -63,8 +63,8 @@ export interface Scan {
   url: string;
   status: string;
   reportUrl: string | null;
+  screenshot: string | null;
   createdAt: Date;
-  // Screenshot is handled outside the database
 }
 export type InsertScan = z.infer<typeof insertScanSchema>;
 export type ReportSettings = typeof reportSettings.$inferSelect;

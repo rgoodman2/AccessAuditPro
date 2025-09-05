@@ -23,6 +23,7 @@ async function migrate() {
         url TEXT NOT NULL,
         status TEXT NOT NULL,
         report_url TEXT,
+        screenshot TEXT,
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
     `);

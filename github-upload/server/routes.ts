@@ -89,8 +89,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const reportUrl = `/reports/${path.basename(reportPath)}`;
             console.log(`Report generated at: ${reportPath}`);
             
-            // Update scan status with report URL
-            await storage.updateScanStatus(scan.id, "completed", reportUrl);
+            // Update scan status with report URL and screenshot
+            await storage.updateScanStatus(scan.id, "completed", reportUrl, results.screenshot);
             console.log(`Scan ID ${scan.id} marked as completed`);
           } catch (reportError) {
             console.error("Error generating report:", reportError);
@@ -101,19 +101,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.log("Attempting to generate a basic report for test page");
                 reportPath = await generateBasicReport(data.url);
                 const reportUrl = `/reports/${path.basename(reportPath)}`;
-                await storage.updateScanStatus(scan.id, "completed", reportUrl);
+                await storage.updateScanStatus(scan.id, "completed", reportUrl, results.screenshot);
                 console.log(`Basic report created for test page at: ${reportPath}`);
               } else {
-                await storage.updateScanStatus(scan.id, "failed");
+                await storage.updateScanStatus(scan.id, "failed", undefined, results.screenshot);
               }
             } catch (fallbackError) {
               console.error("Even fallback report generation failed:", fallbackError);
-              await storage.updateScanStatus(scan.id, "failed");
+              await storage.updateScanStatus(scan.id, "failed", undefined, results.screenshot);
             }
           }
         } catch (error) {
           console.error("Unhandled scan processing error:", error);
-          await storage.updateScanStatus(scan.id, "failed");
+          await storage.updateScanStatus(scan.id, "failed", undefined, results?.screenshot);
         }
       })().catch(err => {
         console.error("Unhandled error in scan background processing:", err);

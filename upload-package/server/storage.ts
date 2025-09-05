@@ -13,7 +13,7 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   createScan(userId: number, scan: InsertScan): Promise<Scan>;
   getUserScans(userId: number): Promise<Scan[]>;
-  updateScanStatus(scanId: number, status: string, reportUrl?: string): Promise<void>;
+  updateScanStatus(scanId: number, status: string, reportUrl?: string, screenshot?: string | null): Promise<void>;
   getReportSettings(userId: number): Promise<ReportSettings | undefined>;
   saveReportSettings(userId: number, settings: InsertReportSettings): Promise<ReportSettings>;
   sessionStore: session.Store;
@@ -46,8 +46,6 @@ export class DatabaseStorage implements IStorage {
 
   async createScan(userId: number, scan: InsertScan): Promise<Scan> {
     try {
-      // Explicitly define what columns to insert to avoid schema mismatch
-      // Do NOT include screenshot column here since it might not exist in all environments
       const [newScan] = await db
         .insert(scans)
         .values({
@@ -61,10 +59,10 @@ export class DatabaseStorage implements IStorage {
           url: scans.url,
           status: scans.status,
           reportUrl: scans.reportUrl,
+          screenshot: scans.screenshot,
           createdAt: scans.createdAt
         });
-        
-      // Return the scan without screenshot property
+
       return newScan;
     } catch (error) {
       console.error('Error creating scan:', error);
@@ -74,17 +72,16 @@ export class DatabaseStorage implements IStorage {
 
   async getUserScans(userId: number): Promise<Scan[]> {
     try {
-      // Explicitly select columns to avoid issues with schema differences
       const results = await db.select({
         id: scans.id,
         userId: scans.userId,
         url: scans.url,
         status: scans.status,
         reportUrl: scans.reportUrl,
+        screenshot: scans.screenshot,
         createdAt: scans.createdAt
       }).from(scans).where(eq(scans.userId, userId));
-      
-      // Return the results without screenshot property
+
       return results;
     } catch (error) {
       console.error('Error fetching scans:', error);
@@ -92,10 +89,10 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async updateScanStatus(scanId: number, status: string, reportUrl?: string): Promise<void> {
+  async updateScanStatus(scanId: number, status: string, reportUrl?: string, screenshot?: string | null): Promise<void> {
     await db
       .update(scans)
-      .set({ status, reportUrl })
+      .set({ status, reportUrl, screenshot })
       .where(eq(scans.id, scanId));
   }
   
