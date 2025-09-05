@@ -7,21 +7,13 @@ import { mkdir } from "fs/promises";
 
 interface LimitedScanResult {
   violations: any[];
-  screenshot: string;
+  fullB64: string;
+  shots: Array<{ruleId: string; sel: string; b64: string | null}>;
   url: string;
   scanDateTime: string;
   error?: string;
 }
 
-interface ViolationWithScreenshot {
-  id: string;
-  description: string;
-  help: string;
-  helpUrl: string;
-  impact: 'minor' | 'moderate' | 'serious' | 'critical';
-  nodes: any[];
-  screenshot?: string;
-}
 
 // Browser configuration for different environments
 const getBrowserConfig = () => {
@@ -115,26 +107,73 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
     
     console.log(`Scan completed. Found ${axeResults.violations.length} violations`);
     
-    // Sort violations by impact (critical > serious > moderate > minor)
-    const impactOrder = { critical: 4, serious: 3, moderate: 2, minor: 1 };
+    // Sort by impact: ['critical','serious','moderate','minor']
+    const impactOrder = ['critical', 'serious', 'moderate', 'minor'];
     const sortedViolations = axeResults.violations.sort((a: any, b: any) => {
-      const aImpact = impactOrder[a.impact] || 0;
-      const bImpact = impactOrder[b.impact] || 0;
-      return bImpact - aImpact;
+      const aIndex = impactOrder.indexOf(a.impact);
+      const bIndex = impactOrder.indexOf(b.impact);
+      return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
     });
     
-    // Take the top 2 violations
-    const limitedViolations = sortedViolations.slice(0, 2);
+    // Take exactly 2 violations (enforce the "2 issues" promise)
+    const selected = sortedViolations.slice(0, 2);
     
-    // Take screenshots of violation elements
-    const violationsWithScreenshots = await captureViolationScreenshots(page, limitedViolations);
+    // Take full page screenshot
+    console.log('Taking full page screenshot...');
+    const fullPageBuffer = await page.screenshot({
+      fullPage: true,
+      type: 'png'
+    });
+    const fullB64 = fullPageBuffer.toString('base64');
+    
+    // Take per-violation element screenshots
+    const shots = [];
+    let elementShotsCount = 0;
+    
+    for (const violation of selected) {
+      const selector = violation.nodes?.[0]?.target?.[0];
+      if (selector) {
+        try {
+          // Outline and center the element
+          await page.evaluate((sel) => {
+            const el = document.querySelector(sel) as HTMLElement | null;
+            if (el) { 
+              el.style.outline = '3px solid #ef4444'; 
+              el.scrollIntoView({block:'center'}); 
+            }
+          }, selector);
+          
+          const element = await page.$(selector);
+          const elB64 = element ? (await element.screenshot()).toString('base64') : null;
+          
+          shots.push({
+            ruleId: violation.id,
+            sel: selector,
+            b64: elB64
+          });
+          
+          if (elB64) elementShotsCount++;
+        } catch (error) {
+          console.warn(`Could not capture screenshot for violation ${violation.id}:`, error);
+          shots.push({
+            ruleId: violation.id,
+            sel: selector,
+            b64: null
+          });
+        }
+      }
+    }
+    
+    // Debug log per scan
+    console.log(`violations_found=${axeResults.violations.length} selected=${selected.length} element_shots=${elementShotsCount}`);
     
     await browser.close();
     browser = null;
     
     return {
-      violations: violationsWithScreenshots,
-      screenshot,
+      violations: selected,
+      fullB64,
+      shots,
       url,
       scanDateTime: new Date().toISOString()
     };
@@ -148,7 +187,8 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
     
     return {
       violations: [],
-      screenshot: '',
+      fullB64: '',
+      shots: [],
       url,
       scanDateTime: new Date().toISOString(),
       error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -156,46 +196,6 @@ export async function scanSinglePageForFree(url: string): Promise<LimitedScanRes
   }
 }
 
-async function captureViolationScreenshots(page: Page, violations: any[]): Promise<ViolationWithScreenshot[]> {
-  const violationsWithScreenshots: ViolationWithScreenshot[] = [];
-  
-  for (const violation of violations) {
-    try {
-      // Try to capture screenshot of the first node with this violation
-      const firstNode = violation.nodes?.[0];
-      if (firstNode && firstNode.target && firstNode.target.length > 0) {
-        const selector = firstNode.target[0];
-        
-        try {
-          const element = await page.$(selector);
-          if (element) {
-            const screenshotBuffer = await element.screenshot({
-              type: 'png'
-            });
-            const elementScreenshot = `data:image/png;base64,${screenshotBuffer.toString('base64')}`;
-            
-            violationsWithScreenshots.push({
-              ...violation,
-              screenshot: elementScreenshot
-            });
-          } else {
-            violationsWithScreenshots.push(violation);
-          }
-        } catch (screenshotError) {
-          console.warn(`Could not capture screenshot for violation ${violation.id}:`, screenshotError);
-          violationsWithScreenshots.push(violation);
-        }
-      } else {
-        violationsWithScreenshots.push(violation);
-      }
-    } catch (error) {
-      console.warn(`Error processing violation ${violation.id}:`, error);
-      violationsWithScreenshots.push(violation);
-    }
-  }
-  
-  return violationsWithScreenshots;
-}
 
 export async function generateLimitedReport(
   scanResult: LimitedScanResult,
@@ -215,6 +215,7 @@ export async function generateLimitedReport(
   const doc = new PDFDocument({
     size: 'letter',
     margin: 50,
+    printBackground: true,
     info: {
       Title: `Limited Accessibility Preview - ${scanResult.url}`,
       Author: 'IncluShield',
@@ -267,7 +268,7 @@ export async function generateLimitedReport(
   } else {
     doc.fontSize(14)
        .fillColor('#333333')
-       .text(`Preview Results: ${scanResult.violations.length} issue${scanResult.violations.length > 1 ? 's' : ''} shown`, 50, yPosition);
+       .text('Preview Results: 2 issues shown', 50, yPosition);
     
     yPosition += 30;
     
@@ -335,23 +336,53 @@ export async function generateLimitedReport(
      .fillColor('#FF6B6B')
      .text('📞 Get Full Report → https://inclushield.com/accessibility-audit', 50, footerY + 50);
   
-  // Add main screenshot if available
-  if (scanResult.screenshot) {
+  // Add full page screenshot if available
+  if (scanResult.fullB64) {
     try {
       doc.addPage();
       doc.fontSize(16)
          .fillColor('#333333')
          .text('Website Screenshot', 50, 50);
       
-      // Convert base64 to buffer and add to PDF (simplified - in production you'd want proper image sizing)
-      const imageData = scanResult.screenshot.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer = Buffer.from(imageData, 'base64');
-      
-      // Add image with proper sizing
+      const imageBuffer = Buffer.from(scanResult.fullB64, 'base64');
       doc.image(imageBuffer, 50, 80, { width: 500, fit: [500, 600] });
     } catch (imageError) {
-      console.warn('Could not add screenshot to PDF:', imageError);
+      console.warn('Could not add full page screenshot to PDF:', imageError);
     }
+  }
+  
+  // Add violation element screenshots
+  if (scanResult.shots && scanResult.shots.length > 0) {
+    doc.addPage();
+    doc.fontSize(16)
+       .fillColor('#333333')
+       .text('Violation Screenshots', 50, 50);
+    
+    let yPos = 80;
+    
+    scanResult.shots.forEach((shot, index) => {
+      if (shot.b64) {
+        try {
+          if (yPos > 600) {
+            doc.addPage();
+            yPos = 50;
+          }
+          
+          doc.fontSize(12)
+             .fillColor('#555555')
+             .text(`Selector: ${shot.sel}`, 50, yPos);
+          
+          yPos += 20;
+          
+          const imageBuffer = Buffer.from(shot.b64, 'base64');
+          doc.image(imageBuffer, 50, yPos, { width: 400, fit: [400, 200] });
+          
+          yPos += 220;
+        } catch (imageError) {
+          console.warn(`Could not add violation screenshot ${shot.ruleId} to PDF:`, imageError);
+        }
+      }
+    });
   }
   
   // Finalize the PDF
